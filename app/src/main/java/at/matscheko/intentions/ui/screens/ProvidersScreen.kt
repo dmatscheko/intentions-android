@@ -1,5 +1,7 @@
 package at.matscheko.intentions.ui.screens
 
+import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -55,12 +58,26 @@ fun ProvidersScreen(vm: AppViewModel, nav: NavController) {
     val exportedOnly = vm.providerExportedOnly
     val levelFilter = vm.providerLevels
 
+    // The authority currently in the query screen's URI box — highlighted and scrolled to.
+    val selectedAuthority = remember(vm.contentUri) {
+        runCatching { Uri.parse(vm.contentUri).authority }.getOrNull()
+    }
+    val listState = rememberLazyListState()
+
     val shown = remember(providers, query, exportedOnly, levelFilter) {
         val q = query.trim()
         providers
             ?.filter { !exportedOnly || it.exported }
             ?.filter { levelFilter.isEmpty() || it.readPermissionLevel in levelFilter }
             ?.filter { q.isEmpty() || it.authority.contains(q, true) || it.packageName.contains(q, true) }
+    }
+
+    // Scroll the selected provider into view (only when not searching).
+    LaunchedEffect(shown, selectedAuthority, query) {
+        if (query.isBlank() && shown != null && selectedAuthority != null) {
+            val index = shown.indexOfFirst { it.authority == selectedAuthority }
+            if (index >= 0) listState.scrollToItem(index)
+        }
     }
 
     Scaffold(
@@ -120,11 +137,16 @@ fun ProvidersScreen(vm: AppViewModel, nav: NavController) {
             if (shown == null) {
                 CircularProgressIndicator(modifier = Modifier.padding(16.dp))
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     items(shown, key = { it.authority }) { provider ->
+                        val selected = provider.authority == selectedAuthority
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .then(
+                                    if (selected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
+                                    else Modifier
+                                )
                                 .clickable {
                                     // If we know any paths, offer a second selector; else use the base.
                                     val known = (provider.declaredPaths +

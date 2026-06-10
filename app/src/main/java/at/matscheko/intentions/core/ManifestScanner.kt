@@ -42,6 +42,8 @@ class ManifestScanner(context: Context) {
         val permission: String? = null,
         /** Protection level of [permission], resolved at scan time. */
         val permissionLevel: ProtectionLevel = ProtectionLevel.NONE,
+        /** For providers: the declared authority/authorities (may be `a;b`), else null. */
+        val authority: String? = null,
     )
 
     data class ComponentSection(val title: String, val items: List<ComponentItem>)
@@ -178,6 +180,7 @@ class ManifestScanner(context: Context) {
                 item.packageName ?: "", item.name, label, kind,
                 exported = exported, hasIcon = hasIcon,
                 permission = permission, permissionLevel = Permissions.levelOf(pm, permission),
+                authority = (item as? ProviderInfo)?.authority,
             )
         }.sortedBy { it.className }
         return ComponentSection(title, rows)

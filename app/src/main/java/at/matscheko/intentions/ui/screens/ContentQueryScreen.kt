@@ -11,13 +11,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -31,11 +35,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -62,7 +68,14 @@ import kotlinx.coroutines.withContext
 fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // Loaded so we can show the entered provider's exported/protection symbols.
+    LaunchedEffect(Unit) { vm.loadProviders() }
     val uri = vm.contentUri
+    // The installed provider matching the authority currently in the URI box.
+    val matchedProvider = remember(uri, vm.providers) {
+        val authority = runCatching { Uri.parse(uri).authority }.getOrNull()
+        authority?.let { a -> vm.providers?.firstOrNull { it.authority == a } }
+    }
     var result by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     // Set when a query is denied, so we can offer a root-shell retry for that URI.
@@ -125,6 +138,29 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            // Status of the matched provider: protection level, exported, owner package.
+            matchedProvider?.let { p ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    val visual = protectionVisual(p.readPermissionLevel)
+                    Icon(visual.icon, contentDescription = "Read permission: ${visual.label}", tint = visual.color, modifier = Modifier.size(18.dp))
+                    Text(visual.label, style = MaterialTheme.typography.bodySmall)
+                    Icon(
+                        if (p.exported) Icons.Filled.Public else Icons.Filled.Lock,
+                        contentDescription = if (p.exported) "Exported" else "Not exported",
+                        tint = if (p.exported) ExportedTint else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        p.packageName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
             Button(
                 enabled = !loading,
                 onClick = {

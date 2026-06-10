@@ -8,9 +8,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,9 +22,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -114,6 +118,13 @@ fun PackageDetailScreen(vm: AppViewModel, nav: NavController, packageName: Strin
         nav.popBackStack(Routes.MAIN, inclusive = false)
     }
 
+    // Jump to the content-provider query screen with this provider's authority filled in.
+    fun queryProvider(item: ManifestScanner.ComponentItem) {
+        val authority = item.authority?.substringBefore(';')?.takeIf { it.isNotBlank() } ?: return
+        vm.contentUri = "content://$authority/"
+        nav.navigate(Routes.CONTENT_QUERY)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -197,6 +208,13 @@ fun PackageDetailScreen(vm: AppViewModel, nav: NavController, packageName: Strin
                                 item = row.item,
                                 selected = row.item.className == selectedClass,
                                 onClick = { pick(row.item) },
+                                onQuery = if (row.item.kind == "provider" &&
+                                    !row.item.authority.isNullOrBlank()
+                                ) {
+                                    { queryProvider(row.item) }
+                                } else {
+                                    null
+                                },
                             )
                         }
                     }
@@ -212,6 +230,7 @@ private fun ComponentRow(
     item: ManifestScanner.ComponentItem,
     selected: Boolean,
     onClick: () -> Unit,
+    onQuery: (() -> Unit)? = null,
 ) {
     val icon by produceState(initialValue = vm.defaultIcon, item.className) {
         value = vm.componentIcon(item)
@@ -245,6 +264,19 @@ private fun ComponentRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        // Providers get a shortcut into the content-query screen, prefilled.
+        if (onQuery != null) {
+            FilledTonalButton(
+                onClick = onQuery,
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                modifier = Modifier.height(36.dp),
+            ) {
+                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Query")
+            }
+            Spacer(Modifier.width(8.dp))
         }
         // Protection level of the permission needed to use this component (omitted
         // when none is required, to avoid an icon on every unprotected row).
