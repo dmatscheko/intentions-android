@@ -20,6 +20,7 @@ import at.matscheko.intentions.data.BookmarkDatabase
 import at.matscheko.intentions.data.RecentIntent
 import at.matscheko.intentions.data.RecentsDatabase
 import at.matscheko.intentions.model.IntentSpec
+import at.matscheko.intentions.model.ProviderOp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -95,6 +96,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** The URI currently shown in the content-provider query screen (shared so the
         provider picker can set it). */
     var contentUri by mutableStateOf("content://user_dictionary/words")
+
+    // The content-provider operation and its inputs, kept across navigation until
+    // the process dies (like [contentUri]).
+    var contentOp by mutableStateOf(ProviderOp.QUERY)
+    var contentMethod by mutableStateOf("")
+    var contentArg by mutableStateOf("")
+    var contentValues by mutableStateOf("")
+    var contentWhere by mutableStateOf("")
 
     // --- remembered search/filter UI state -----------------------------------
     // Activity-scoped, so each search box and the provider filters keep their last

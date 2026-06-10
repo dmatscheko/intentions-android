@@ -1,6 +1,7 @@
 package at.matscheko.intentions.ui.screens
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -23,16 +24,23 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,17 +60,21 @@ import at.matscheko.intentions.core.Permissions
 import at.matscheko.intentions.core.ProtectionLevel
 import at.matscheko.intentions.core.ShellRunner
 import at.matscheko.intentions.core.conciseMessage
+import at.matscheko.intentions.model.ProviderOp
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.components.ShellRetryButton
 import at.matscheko.intentions.ui.Routes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.InputStream
 
 /**
- * Lets the user query a content provider by URI and shows the returned rows.
- * Implements the README TODO "implement content provider" (e.g.
- * `content://user_dictionary/words`).
+ * Exercises a content provider. Read operations (query / get type / read / call)
+ * run on tap; write operations (insert / update / delete) are gated behind an
+ * explicit confirmation so another app's data isn't changed by an accidental tap.
+ * Every operation can be retried through a shell (su/sh) when the in-app call is
+ * denied. Implements the README TODO "implement content provider".
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,36 +89,55 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
         val authority = runCatching { Uri.parse(uri).authority }.getOrNull()
         authority?.let { a -> vm.providers?.firstOrNull { it.authority == a } }
     }
+
+    // Operation and its inputs live in the ViewModel so they survive navigation
+    // (remembered until the app process is terminated), like the URI box.
+    val op = vm.contentOp
+    val method = vm.contentMethod
+    val arg = vm.contentArg
+    val values = vm.contentValues
+    val where = vm.contentWhere
+    var opMenuOpen by remember { mutableStateOf(false) }
+
     var result by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
-    // Set when a query is denied, so we can offer a root-shell retry for that URI.
-    var shellRetryUri by remember { mutableStateOf<String?>(null) }
+    // The on-device shell command to retry a denied/failed operation with (or null).
+    var shellRetryCommand by remember { mutableStateOf<String?>(null) }
+    var confirmPending by remember { mutableStateOf(false) }
 
-    fun runQuery() {
+    fun execute() {
+        val request = OpRequest(uri, op, method, arg, values, where)
         loading = true
         scope.launch {
-            val r = withContext(Dispatchers.IO) { query(context, uri) }
+            val r = withContext(Dispatchers.IO) { runOp(context, request) }
             result = r.text
-            shellRetryUri = r.shellRetryUri
+            shellRetryCommand = if (r.offerRetry) shellCommandFor(request) else null
             loading = false
         }
     }
 
-    fun retryViaShell(target: String, root: Boolean) {
+    fun retryViaShell(command: String, root: Boolean) {
         loading = true
         scope.launch {
-            val command = "content query --uri ${ShellRunner.quote(target)}"
             result = withContext(Dispatchers.IO) { ShellRunner.run(command, root) }
             // Keep the retry offered so the other mode (su/sh) can still be tried.
             loading = false
         }
     }
 
-    // Many providers gate reads behind a runtime permission, so ask for whatever
-    // the target authority requires (and that we can grant) before querying.
+    // Reads may be gated behind a runtime permission we can request; ask first.
     val permissionRequest = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { runQuery() }
+    ) { execute() }
+
+    fun onExecuteClick() {
+        if (op.mutating) {
+            confirmPending = true
+        } else {
+            val needed = grantablePermissionsFor(context, uri)
+            if (needed.isNotEmpty()) permissionRequest.launch(needed) else execute()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -162,19 +193,83 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
                     )
                 }
             }
+
+            // Operation selector.
+            ExposedDropdownMenuBox(expanded = opMenuOpen, onExpandedChange = { opMenuOpen = it }) {
+                OutlinedTextField(
+                    value = op.label,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Operation") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = opMenuOpen) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                )
+                ExposedDropdownMenu(expanded = opMenuOpen, onDismissRequest = { opMenuOpen = false }) {
+                    ProviderOp.entries.forEach { o ->
+                        DropdownMenuItem(
+                            text = { Text(o.label + if (o.mutating) "  — writes data" else "") },
+                            onClick = { vm.contentOp = o; opMenuOpen = false },
+                        )
+                    }
+                }
+            }
+
+            // Operation-specific inputs.
+            if (op == ProviderOp.CALL) {
+                OutlinedTextField(
+                    value = method,
+                    onValueChange = { vm.contentMethod = it },
+                    label = { Text("Method") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = arg,
+                    onValueChange = { vm.contentArg = it },
+                    label = { Text("Arg (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (op == ProviderOp.INSERT || op == ProviderOp.UPDATE) {
+                OutlinedTextField(
+                    value = values,
+                    onValueChange = { vm.contentValues = it },
+                    label = { Text("Values (key=value, one per line)") },
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (op == ProviderOp.UPDATE || op == ProviderOp.DELETE) {
+                OutlinedTextField(
+                    value = where,
+                    onValueChange = { vm.contentWhere = it },
+                    label = { Text("Where (optional, e.g. _id=1)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             Button(
                 enabled = !loading,
-                onClick = {
-                    val needed = grantablePermissionsFor(context, uri)
-                    if (needed.isNotEmpty()) permissionRequest.launch(needed) else runQuery()
+                onClick = { onExecuteClick() },
+                colors = if (op.mutating) {
+                    ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    )
+                } else {
+                    ButtonDefaults.buttonColors()
                 },
-            ) { Text("Query") }
+            ) { Text(op.label) }
 
             if (loading) CircularProgressIndicator()
 
-            // Offered after a denial: a shell (root or not) may get past the restriction.
-            shellRetryUri?.let { target ->
-                ShellRetryButton(enabled = !loading) { root -> retryViaShell(target, root) }
+            // Offered after a denial/failure: a shell (root or not) may get past it.
+            shellRetryCommand?.let { command ->
+                ShellRetryButton(enabled = !loading) { root -> retryViaShell(command, root) }
             }
 
             if (result.isNotEmpty()) {
@@ -193,77 +288,210 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
             }
         }
     }
-}
 
-/** A query outcome: text to show, plus a URI to offer a root-shell retry for (or null). */
-private data class QueryResult(val text: String, val shellRetryUri: String? = null)
-
-private fun query(context: Context, uriString: String): QueryResult = try {
-    val uri = Uri.parse(uriString)
-    val cursor = context.contentResolver.query(uri, null, null, null, null)
-    if (cursor == null) {
-        // No provider / access denied — a shell (root) may still reach it.
-        QueryResult("Query returned null — provider not found or access denied.", shellRetryUri = uriString)
-    } else cursor.use { c ->
-        QueryResult(
-            buildString {
-                appendLine(c.columnNames.joinToString(" | "))
-                appendLine("-".repeat(40))
-                var rows = 0
-                while (c.moveToNext() && rows < 500) {
-                    val cells = (0 until c.columnCount).joinToString(" | ") { i ->
-                        runCatching { c.getString(i) ?: "null" }.getOrDefault("<blob>")
-                    }
-                    appendLine(cells)
-                    rows++
+    if (confirmPending) {
+        val authority = remember(uri) { runCatching { Uri.parse(uri).authority }.getOrNull() } ?: uri
+        AlertDialog(
+            onDismissRequest = { confirmPending = false },
+            title = { Text("${op.label} — modify data?") },
+            text = {
+                Text(
+                    "This will ${op.label.lowercase()} data in “$authority”. It can change another " +
+                        "app's data and can't be undone. Continue only if you mean to.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmPending = false
+                    execute()
+                }) {
+                    Text(op.label, color = MaterialTheme.colorScheme.error)
                 }
-                if (rows == 0) {
-                    appendLine("(no rows)")
-                    emptyResultHint(context, uri)?.let { appendLine("\n$it") }
-                } else {
-                    appendLine("\n$rows row(s)")
-                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmPending = false }) { Text("Cancel") }
             },
         )
     }
+}
+
+/** A provider operation to run, with the inputs it needs. */
+private data class OpRequest(
+    val uriString: String,
+    val op: ProviderOp,
+    val method: String = "",
+    val arg: String = "",
+    val values: String = "",
+    val where: String = "",
+)
+
+/** The outcome: text to show, and whether to offer a shell retry. */
+private data class OpResult(val text: String, val offerRetry: Boolean = false)
+
+private fun runOp(context: Context, req: OpRequest): OpResult = try {
+    val u = Uri.parse(req.uriString)
+    val cr = context.contentResolver
+    when (req.op) {
+        ProviderOp.QUERY -> {
+            val cursor = cr.query(u, null, null, null, null)
+            if (cursor == null) {
+                OpResult("Query returned null — provider not found or access denied.", offerRetry = true)
+            } else cursor.use { c ->
+                OpResult(
+                    buildString {
+                        appendLine(c.columnNames.joinToString(" | "))
+                        appendLine("-".repeat(40))
+                        var rows = 0
+                        while (c.moveToNext() && rows < 500) {
+                            val cells = (0 until c.columnCount).joinToString(" | ") { i ->
+                                runCatching { c.getString(i) ?: "null" }.getOrDefault("<blob>")
+                            }
+                            appendLine(cells)
+                            rows++
+                        }
+                        if (rows == 0) {
+                            appendLine("(no rows)")
+                            emptyResultHint(context, u)?.let { appendLine("\n$it") }
+                        } else {
+                            appendLine("\n$rows row(s)")
+                        }
+                    },
+                )
+            }
+        }
+        ProviderOp.GET_TYPE -> {
+            val type = cr.getType(u)
+            OpResult("MIME type: ${type ?: "(null)"}", offerRetry = type == null)
+        }
+        ProviderOp.READ -> {
+            val stream = cr.openInputStream(u)
+            if (stream == null) {
+                OpResult("openInputStream() returned null.", offerRetry = true)
+            } else stream.use { s ->
+                val bytes = readCapped(s, 256 * 1024)
+                val type = cr.getType(u)
+                val isText = bytes.none { it == 0.toByte() }
+                OpResult(
+                    "MIME type: ${type ?: "(unknown)"}\nBytes read: ${bytes.size}\n\n" +
+                        if (isText) bytes.toString(Charsets.UTF_8) else "(binary content)",
+                )
+            }
+        }
+        ProviderOp.CALL -> {
+            if (req.method.isBlank()) {
+                OpResult("Enter a method name to call().")
+            } else {
+                val bundle = cr.call(u, req.method, req.arg.ifBlank { null }, null)
+                if (bundle == null) {
+                    OpResult("call() returned null.", offerRetry = true)
+                } else {
+                    OpResult(
+                        buildString {
+                            appendLine("call() returned a Bundle:")
+                            if (bundle.isEmpty) appendLine("(empty)")
+                            for (key in bundle.keySet()) {
+                                @Suppress("DEPRECATION") val v = bundle.get(key)
+                                appendLine("  $key = $v")
+                            }
+                        },
+                    )
+                }
+            }
+        }
+        ProviderOp.INSERT -> {
+            val newUri = cr.insert(u, parseValues(req.values))
+            OpResult("Inserted: ${newUri ?: "(null — nothing inserted)"}", offerRetry = newUri == null)
+        }
+        ProviderOp.UPDATE -> {
+            val n = cr.update(u, parseValues(req.values), req.where.ifBlank { null }, null)
+            OpResult("Updated $n row(s).")
+        }
+        ProviderOp.DELETE -> {
+            val n = cr.delete(u, req.where.ifBlank { null }, null)
+            OpResult("Deleted $n row(s).")
+        }
+    }
 } catch (e: SecurityException) {
-    // Expected for providers locked to the system or the Storage Access Framework:
-    // they throw at acquire-time, so present a concise reason instead of a trace.
-    // A root shell may bypass the restriction, so offer that retry.
-    QueryResult(
-        securityDenialMessage(runCatching { Uri.parse(uriString) }.getOrNull(), e),
-        shellRetryUri = uriString,
-    )
+    // Locked to the system / SAF, or a permission a normal app can't hold. A shell
+    // (root) may bypass it, so offer that retry.
+    OpResult(securityDenialMessage(runCatching { Uri.parse(req.uriString) }.getOrNull(), e), offerRetry = true)
 } catch (e: UnsupportedOperationException) {
-    // The provider exists but doesn't implement query() — common for providers that
-    // only expose call() / openFile() / insert(). A shell can't help here, so no retry.
-    QueryResult(
-        "This provider doesn't support querying.\n\n" +
+    // The provider doesn't implement this operation; a shell can't change that.
+    OpResult(
+        "This provider doesn't support ${req.op.label.lowercase()}.\n\n" +
             (e.message?.trim()?.takeIf { it.isNotEmpty() }?.let { "$it\n\n" } ?: "") +
-            "Its query() isn't implemented, so there are no rows to list. It may only " +
-            "support other operations such as call(), insert(), getType() or openFile().",
+            "That operation isn't implemented for this URI.",
     )
 } catch (e: Exception) {
-    // Any other failure: show the error and still offer a shell retry, which may
-    // behave differently (e.g. as root, or a differently-enforced caller identity).
-    QueryResult("Error: ${e.conciseMessage()}", shellRetryUri = uriString)
+    OpResult("Error: ${e.conciseMessage()}", offerRetry = true)
+}
+
+/** The on-device `content` shell command equivalent to [req], for the shell retry. */
+private fun shellCommandFor(req: OpRequest): String {
+    val u = ShellRunner.quote(req.uriString)
+    return when (req.op) {
+        ProviderOp.QUERY -> "content query --uri $u"
+        ProviderOp.GET_TYPE -> "content gettype --uri $u"
+        ProviderOp.READ -> "content read --uri $u"
+        ProviderOp.CALL -> "content call --uri $u --method ${ShellRunner.quote(req.method)}" +
+            (if (req.arg.isNotBlank()) " --arg ${ShellRunner.quote(req.arg)}" else "")
+        ProviderOp.INSERT -> "content insert --uri $u" + bindArgs(req.values)
+        ProviderOp.UPDATE -> "content update --uri $u" + bindArgs(req.values) + whereArg(req.where)
+        ProviderOp.DELETE -> "content delete --uri $u" + whereArg(req.where)
+    }
+}
+
+/** `key=value` lines → ContentValues (everything as a string). */
+private fun parseValues(raw: String): ContentValues {
+    val cv = ContentValues()
+    raw.lineSequence().forEach { line ->
+        val t = line.trim()
+        if (t.isEmpty()) return@forEach
+        val idx = t.indexOf('=')
+        if (idx > 0) cv.put(t.substring(0, idx).trim(), t.substring(idx + 1).trim())
+    }
+    return cv
+}
+
+/** `key=value` lines → `content` `--bind key:s:value` flags (string-typed). */
+private fun bindArgs(values: String): String = values.lineSequence().mapNotNull { line ->
+    val t = line.trim()
+    if (t.isEmpty()) return@mapNotNull null
+    val idx = t.indexOf('=')
+    if (idx <= 0) return@mapNotNull null
+    val key = t.substring(0, idx).trim()
+    val value = t.substring(idx + 1).trim()
+    " --bind ${ShellRunner.quote("$key:s:$value")}"
+}.joinToString("")
+
+private fun whereArg(where: String): String =
+    if (where.isBlank()) "" else " --where ${ShellRunner.quote(where)}"
+
+private fun readCapped(input: InputStream, limit: Int): ByteArray {
+    val buffer = ByteArray(limit)
+    var read = 0
+    while (read < limit) {
+        val n = input.read(buffer, read, limit - read)
+        if (n < 0) break
+        read += n
+    }
+    return buffer.copyOf(read)
 }
 
 /** Turn a provider [SecurityException] into a short, actionable explanation. */
 private fun securityDenialMessage(uri: Uri?, e: SecurityException): String {
     val reason = e.message?.trim().orEmpty()
     val guidance = when {
-        // Storage Access Framework providers can't be queried directly at all.
+        // Storage Access Framework providers can't be reached directly at all.
         reason.contains("OPEN_DOCUMENT") || uri?.authority?.endsWith(".documents") == true ->
-            "This is a Storage Access Framework provider — it can only be read through the " +
-                "system document picker (ACTION_OPEN_DOCUMENT / OPEN_DOCUMENT_TREE), not a direct query."
+            "This is a Storage Access Framework provider — it's reachable only through the system " +
+                "document picker (ACTION_OPEN_DOCUMENT / OPEN_DOCUMENT_TREE), not a direct call."
         // A named permission a normal app can't hold (signature/privileged).
         Regex("android\\.permission\\.\\w+").find(reason) != null ->
-            "It requires a signature/privileged permission a normal app can't be granted. " +
-                "Read it from a privileged context instead, e.g. `adb shell content query --uri $uri`."
+            "It requires a signature/privileged permission a normal app can't be granted. Try the " +
+                "Run via shell option below — root may get past it."
         else ->
-            "This provider denies direct queries from a normal app. " +
-                "Try a privileged context, e.g. `adb shell content query --uri $uri`."
+            "This provider denies direct access from a normal app. Try the Run via shell option below."
     }
     return "Access denied.\n\n$reason\n\n$guidance"
 }
@@ -349,6 +577,6 @@ private fun emptyResultHint(context: Context, uri: Uri): String? {
         "Note: this provider requires $perm, which isn't granted yet. Grant it and query again."
     } else {
         "Note: this provider requires $perm, which a normal app can't be granted at runtime. " +
-            "Read it from a privileged context instead, e.g. `adb shell content query --uri $uri`."
+            "Read it from a privileged context instead, e.g. the Run via shell option."
     }
 }
