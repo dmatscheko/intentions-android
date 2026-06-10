@@ -51,6 +51,7 @@ import androidx.navigation.NavController
 import at.matscheko.intentions.core.Permissions
 import at.matscheko.intentions.core.ProtectionLevel
 import at.matscheko.intentions.core.ShellRunner
+import at.matscheko.intentions.core.conciseMessage
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.components.ShellRetryButton
 import at.matscheko.intentions.ui.Routes
@@ -245,7 +246,7 @@ private fun query(context: Context, uriString: String): QueryResult = try {
 } catch (e: Exception) {
     // Any other failure: show the error and still offer a shell retry, which may
     // behave differently (e.g. as root, or a differently-enforced caller identity).
-    QueryResult("Error: ${e.message}\n\n${e.stackTraceToString()}", shellRetryUri = uriString)
+    QueryResult("Error: ${e.conciseMessage()}", shellRetryUri = uriString)
 }
 
 /** Turn a provider [SecurityException] into a short, actionable explanation. */

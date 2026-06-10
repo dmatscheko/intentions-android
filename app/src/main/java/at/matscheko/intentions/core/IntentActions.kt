@@ -75,7 +75,7 @@ object IntentActions {
                 Handler(Looper.getMainLooper()), 0, null, null,
             )
         } catch (e: Exception) {
-            onResult(ActionResult("Failed to send ordered broadcast.\n\n${e.stackTraceToString()}", "broadcast"))
+            onResult(ActionResult("Failed to send ordered broadcast.\n\n${e.conciseMessage()}", "broadcast"))
         }
     }
 
@@ -116,7 +116,7 @@ object IntentActions {
                 }
             }, 5_000)
         } catch (e: Exception) {
-            onResult(ActionResult("Failed to bind service.\n\n${e.stackTraceToString()}"))
+            onResult(ActionResult("Failed to bind service.\n\n${e.conciseMessage()}"))
         }
     }
 
@@ -128,5 +128,5 @@ object IntentActions {
 
     private inline fun guarded(op: String, retryVerb: String?, block: () -> String): ActionResult =
         runCatching { ActionResult(block()) }
-            .getOrElse { ActionResult("Failed to execute $op(intent).\n\n${it.stackTraceToString()}", retryVerb) }
+            .getOrElse { ActionResult("Failed to execute $op(intent).\n\n${it.conciseMessage()}", retryVerb) }
 }
