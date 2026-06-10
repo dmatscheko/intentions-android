@@ -31,7 +31,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
@@ -58,6 +57,7 @@ import at.matscheko.intentions.core.ResourceBrowser
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
+import at.matscheko.intentions.ui.components.SearchField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,11 +111,10 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
                     text = { Text("Text / XML" + (texts?.let { " (${it.size})" } ?: "")) },
                 )
             }
-            OutlinedTextField(
+            SearchField(
                 value = query,
                 onValueChange = { vm.resourcesQuery = it },
-                label = { Text("Search resources") },
-                singleLine = true,
+                label = "Search resources",
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             )
             when (tab) {

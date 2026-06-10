@@ -21,7 +21,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -40,6 +39,7 @@ import at.matscheko.intentions.core.IntentClipboard
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
+import at.matscheko.intentions.ui.components.SearchField
 import at.matscheko.intentions.ui.components.ListOverflowMenu
 import at.matscheko.intentions.ui.components.rememberAppIcon
 
@@ -90,11 +90,10 @@ fun PackageExplorerScreen(vm: AppViewModel, nav: NavController) {
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            OutlinedTextField(
+            SearchField(
                 value = query,
                 onValueChange = { vm.appsQuery = it },
-                label = { Text("Search apps" + (apps?.let { " (${it.size})" } ?: "")) },
-                singleLine = true,
+                label = "Search apps" + (apps?.let { " (${it.size})" } ?: ""),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             )
             if (shown == null) {

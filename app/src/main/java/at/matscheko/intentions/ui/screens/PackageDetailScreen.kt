@@ -31,7 +31,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -57,6 +56,7 @@ import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
 import at.matscheko.intentions.ui.components.ListOverflowMenu
+import at.matscheko.intentions.ui.components.SearchField
 
 private sealed interface DetailRow {
     data class Header(val title: String) : DetailRow
@@ -170,14 +170,11 @@ fun PackageDetailScreen(vm: AppViewModel, nav: NavController, packageName: Strin
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            OutlinedTextField(
+            SearchField(
                 value = query,
                 onValueChange = { vm.componentsQuery = it },
-                label = {
-                    val count = sections?.sumOf { it.items.size }
-                    Text("Search components" + (count?.let { " ($it)" } ?: ""))
-                },
-                singleLine = true,
+                label = "Search components" +
+                    ((sections?.sumOf { it.items.size })?.let { " ($it)" } ?: ""),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             )
             when {

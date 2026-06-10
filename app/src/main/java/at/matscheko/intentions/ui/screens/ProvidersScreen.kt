@@ -28,7 +28,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -46,6 +45,7 @@ import at.matscheko.intentions.core.ProtectionLevel
 import at.matscheko.intentions.core.ProviderPaths
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
+import at.matscheko.intentions.ui.components.SearchField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,11 +93,10 @@ fun ProvidersScreen(vm: AppViewModel, nav: NavController) {
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            OutlinedTextField(
+            SearchField(
                 value = query,
                 onValueChange = { vm.providersQuery = it },
-                label = { Text("Search providers" + (providers?.let { " (${it.size})" } ?: "")) },
-                singleLine = true,
+                label = "Search providers" + (providers?.let { " (${it.size})" } ?: ""),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             )
             Row(

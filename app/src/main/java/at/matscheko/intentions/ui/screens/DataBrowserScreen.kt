@@ -15,7 +15,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -37,6 +36,7 @@ import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
 import at.matscheko.intentions.ui.components.ListOverflowMenu
+import at.matscheko.intentions.ui.components.SearchField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,11 +91,10 @@ fun DataBrowserScreen(vm: AppViewModel, nav: NavController, kind: ScanKind) {
                     else current.filter { it.contains(query, ignoreCase = true) }
                 }
                 Column(modifier = Modifier.fillMaxSize()) {
-                    OutlinedTextField(
+                    SearchField(
                         value = query,
                         onValueChange = { vm.setDataQuery(kind, it) },
-                        label = { Text("Filter (${current.size})") },
-                        singleLine = true,
+                        label = "Filter (${current.size})",
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                     )
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
