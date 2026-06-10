@@ -20,82 +20,71 @@ The app is largely a reconstruction of the Intentions app from 2012, whose code 
 ## Features
 
 ### Build an intent
-- **Intent editor** with toggleable sections — component (package / class), action, data
-  (URI + MIME type), categories, and extras. Each field is retained even when toggled off,
-  so nothing is lost while experimenting.
-- **Autocomplete** for actions, categories and extra names from a built-in catalogue.
-- **Typed extras editor** supporting `String`, `Boolean`, `Integer`, `Long`, `Float`,
-  `Double`, `Short`, `Byte`, `Character`, `null`, a nested `Intent`, and array / list types
-  (`String[]`, `int[]`, `long[]`, `float[]`, `double[]`, `boolean[]`, `ArrayList<String>`,
-  `ArrayList<Integer>`). Array values are entered one per line.
-- **Flags** — a checklist of common `Intent` flags (`NEW_TASK`, `CLEAR_TOP`,
-  `GRANT_READ_URI_PERMISSION`, …).
-- **Resolved content type** is shown for `content://` URIs that have no explicit MIME type.
+- **Intent editor** — set the component, action, data URI + MIME type, categories, extras
+  and flags. Sections toggle on and off without losing what you've typed.
+- **Typed extras** — add extras of any common type: `String`, `Boolean`, the numeric types,
+  `Character`, `Uri`, `null`, a nested `Intent`, and array / list types. Values are checked
+  as you type.
+- **Autocomplete** for actions, categories and extra names.
 
 ### Dispatch it
-From the main screen's **Execute** row:
-- **Activity** — `startActivity()` (and shows the returned result code / result intent).
-- **Broadcast** — `sendBroadcast()`.
-- **Ordered broadcast** — `sendOrderedBroadcast()` and reports the final result code / data /
-  extras receivers set.
-- **Start service** / **Stop service**.
-- **Bind service** — binds and reports the service component and binder interface descriptor.
-- **Show manifest** — pretty-prints the target package's `AndroidManifest.xml`.
+From the **Execute** row:
+- **Activity**, **Broadcast**, **Ordered broadcast**, **Start / Stop / Bind service**.
+- The button group matching the intent's resolved target (activity / service / receiver) is
+  highlighted, but any of them can still be tried.
+- **Bind service** opens a panel where you can send **Messenger** messages
+  (`what` / `arg1` / `arg2` plus a typed data bundle) and see the replies.
+- When a dispatch is blocked, the result is a plain explanation plus a **Run via shell**
+  option that retries the equivalent `am` command, with or without root.
+- **Show manifest** — pretty-prints the target app's manifest (including split APKs), with
+  resource references resolved to their names.
 
 ### Explore the system
-- **Package explorer** — searchable list of installed apps with icons. Open one to see its
-  activities, services, receivers, providers and declared intent-filter actions, each with
-  its icon and a green badge for components that are **exported** (reachable by other apps).
-  The scan includes components that are **disabled by default** or **direct-boot**-scoped,
-  which big apps routinely declare — so nothing is silently hidden. Tap a component to load
-  it into the intent. If an app is already selected, the explorer jumps straight into its
-  components.
-- **Data browsers** — every **action**, **category**, **data scheme**, **MIME type** and
-  **data authority** declared across all installed apps; tap to apply to the current intent.
-- **Content-provider query** — enter (or pick from the discovered list of) a `content://`
-  authority and view the returned rows.
-- **Resource browser** — browse another app's resources across two tabs: **Images**
-  (drawable/mipmap rasters and vector drawables, as thumbnails) and **Text / XML** (`xml`,
-  `raw`, `layout`, `menu`, … resources decoded back into readable text — binary XML is
-  re-serialised). Pick any entry as an `android.resource://…` data URI, or copy the text.
-- **App info / Force-stop** — jump to the system App-Info page for a package.
+- **Package explorer** — searchable list of installed apps. Open one to see its activities,
+  services, receivers, providers and intent-filter actions, each marked with an **exported**
+  badge and a **permission level** icon (open / normal / dangerous / signature). Tap a
+  component to load it into the intent; tap **Query** on a provider to jump straight to a
+  content query for it.
+- **Data browsers** — every action, category, data scheme, MIME type and data authority
+  declared across installed apps; tap to apply to the current intent.
+- **Content provider** — against a `content://` URI, run **Query**, **Get type**, **Read**
+  and **Call**, or — behind a confirmation — **Insert / Update / Delete**. The provider's
+  exported / permission status is shown, a needed permission is requested when possible, and
+  a **Run via shell** fallback (su / sh) is offered when access is denied.
+- **Resource browser** — browse another app's images and text / XML resources (including its
+  `AndroidManifest.xml`), with references resolved to names. Pick an entry as an
+  `android.resource://…` URI, or copy its text.
+- **App info / Force-stop** — open the system App-Info page for a package.
 
 ### Capture intents
-- **Broadcast sniffer** — a background **foreground-service** monitor that records system
-  broadcasts as they happen (action, time, extras). The watched action list is fully
-  editable (add / remove / reset to defaults). Tap a captured entry to load it into the
-  editor.
+- **Broadcast sniffer** — a background monitor that records system broadcasts as they happen.
+  The watched-action list is editable; tap a captured entry to load it into the editor.
 - **Scheme & share interceptor** — Intentions appears in the system "Open with" / share
-  sheets for common schemes (`tel:`, `mailto:`, `geo:`, `http(s):`, `content:`, …) and for
-  `SEND`. Choosing it captures the incoming intent and loads it into the editor.
+  sheets; choosing it captures the incoming intent into the editor.
 
 ### Save & share
-- **Bookmarks** — save intents (stored locally) and reload them later.
-- **Recent intents** — an automatic history of intents you've executed; tap to reload.
-  Re-running an intent moves it to the top, and entries can be deleted individually.
-- **Copy as `adb` command** — from the editor's ⋮ menu, generate a ready-to-run
-  `adb shell am start …` line (extras map onto `am`'s typed flags). `am` has no syntax for a
-  nested-`Intent` extra, so those are omitted with a heads-up. Works on nested intents too.
-- **Home-screen shortcut** — also in the editor's ⋮ menu; pins a shortcut that fires the
-  intent you're editing (including a nested one).
-- **Clipboard** — copy/paste an intent as a portable Base64 string.
-- **Home-screen shortcut** — from the editor, pin a shortcut that fires the current intent
-  (modern pinned shortcuts, with a legacy fallback).
-- **Create-shortcut host** — responds to a launcher's `CREATE_SHORTCUT` request so you can
-  build an arbitrary intent shortcut from a launcher.
+- **Bookmarks** — save intents and reload them later.
+- **Recent intents** — automatic history of intents you've executed; tap to reload.
+- **Copy as `adb` command** — generate a ready-to-run `adb shell am …` line.
+- **Clipboard** — copy / paste an intent as a portable string.
+- **Home-screen shortcut** — pin a shortcut that fires the current intent. Intentions also
+  responds to a launcher's create-shortcut request.
 
 ---
 
 ## Permissions & notes
 - `QUERY_ALL_PACKAGES` — the app's purpose is to enumerate and inspect other apps.
 - `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_SPECIAL_USE` / `POST_NOTIFICATIONS` — the
-  background broadcast sniffer and its persistent notification.
+  background broadcast sniffer and its notification.
+- Media and provider read permissions (`READ_MEDIA_*`, `READ_CONTACTS`, `READ_CALENDAR`,
+  `READ_SMS`, `READ_CALL_LOG`) — requested on demand so the content-provider screen can
+  return rows from those providers.
 - `KILL_BACKGROUND_PROCESSES`, `INSTALL_SHORTCUT` — the force-stop helper and legacy shortcut
   fallback.
 
-Some original capabilities are limited by modern Android: listing/killing *other apps'*
-running services is no longer permitted (Android 8+), so the app offers the system
-App-Info / force-stop page instead.
+Modern Android limits some original capabilities: listing or killing *other apps'* running
+services is no longer allowed (Android 8+), so the app opens the system App-Info / force-stop
+page instead.
 
 ## Install
 A debug build can be installed with:
