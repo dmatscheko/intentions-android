@@ -1,8 +1,11 @@
 package at.matscheko.intentions.ui.screens
 
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.background
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -44,8 +47,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -78,6 +83,10 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
     var menuOpen by remember { mutableStateOf(false) }
     var shellRunning by remember { mutableStateOf(false) }
+    // Non-null while the bound-service dialog is open.
+    var bindDialogIntent by remember { mutableStateOf<Intent?>(null) }
+    // Which component kinds the current intent resolves to (for the hint + highlight).
+    val resolved = remember(vm.spec) { resolveTargets(context, vm.spec.toIntent()) }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -199,13 +208,20 @@ fun MainScreen(
 
             // --- Execute ---
             // Grouped by dispatch kind: activity, then the broadcast pair, then
-            // the service trio. Each group is its own wrapping row.
+            // the service trio. The group matching the intent's resolved type is
+            // highlighted, but all stay enabled so edge cases can still be tested.
             SectionLabel("Execute")
+            Text(
+                resolved.summary(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = INDENT, bottom = 4.dp),
+            )
             Column(
                 modifier = Modifier.padding(start = INDENT),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ExecuteGroup {
+                ExecuteGroup(highlighted = TargetKind.ACTIVITY in resolved.kinds) {
                     Button(onClick = {
                         vm.recordRecent()
                         val intent = vm.spec.toIntent()
@@ -219,7 +235,7 @@ fun MainScreen(
                             }
                     }) { Text("Activity") }
                 }
-                ExecuteGroup {
+                ExecuteGroup(highlighted = TargetKind.RECEIVER in resolved.kinds) {
                     Button(onClick = {
                         vm.recordRecent()
                         applyResult(IntentActions.sendBroadcast(context, vm.spec.toIntent()))
@@ -230,7 +246,7 @@ fun MainScreen(
                         IntentActions.sendOrderedBroadcast(context, vm.spec.toIntent()) { applyResult(it) }
                     }) { Text("Ordered broadcast") }
                 }
-                ExecuteGroup {
+                ExecuteGroup(highlighted = TargetKind.SERVICE in resolved.kinds) {
                     Button(onClick = {
                         vm.recordRecent()
                         applyResult(IntentActions.startService(context, vm.spec.toIntent()))
@@ -241,8 +257,7 @@ fun MainScreen(
                     }) { Text("Stop service") }
                     Button(onClick = {
                         vm.recordRecent()
-                        vm.setResult("Binding service…")
-                        IntentActions.bindService(context, vm.spec.toIntent()) { applyResult(it) }
+                        bindDialogIntent = vm.spec.toIntent()
                     }) { Text("Bind service") }
                 }
             }
@@ -314,14 +329,34 @@ fun MainScreen(
             }
         }
     }
+
+    bindDialogIntent?.let { intent ->
+        BoundServiceDialog(intent = intent, onDismiss = { bindDialogIntent = null })
+    }
 }
 
-/** One group of execute buttons; wraps to a new line if the row gets too narrow. */
+/**
+ * One group of execute buttons; wraps to a new line if the row gets too narrow.
+ * When [highlighted] (the intent resolves to this group's dispatch kind) it gets a
+ * subtle tonal background so the matching action stands out — without disabling the
+ * others, so non-matching dispatches can still be tried.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ExecuteGroup(content: @Composable FlowRowScope.() -> Unit) {
+private fun ExecuteGroup(highlighted: Boolean = false, content: @Composable FlowRowScope.() -> Unit) {
     FlowRow(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (highlighted) {
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                        .padding(6.dp)
+                } else {
+                    Modifier
+                },
+            ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         content = content,
     )
@@ -359,4 +394,54 @@ private fun launchFailureMessage(t: Throwable): String {
     }
     return "Couldn't launch startActivity(intent).\n\n$explanation" +
         (if (reason.isNotEmpty()) "\n\n$reason" else "")
+}
+
+/** Which kinds of component the current intent can dispatch to. */
+private enum class TargetKind(val label: String) { ACTIVITY("Activity"), SERVICE("Service"), RECEIVER("Receiver") }
+
+private data class ResolvedTargets(val kinds: Set<TargetKind>, val component: String?) {
+    fun summary(): String = when {
+        kinds.isEmpty() ->
+            "Resolves to: nothing installed handles this intent (you can still try)."
+        else -> "Resolves to: " + kinds.joinToString(" / ") { it.label } +
+            (component?.let { " — $it" } ?: "")
+    }
+}
+
+/**
+ * Ask the PackageManager which component kinds this intent resolves to. An explicit
+ * intent pins the exact type; an implicit one reports what can handle it. Used only
+ * to hint/emphasize the matching execute group — never to block a dispatch, since
+ * dynamic receivers aren't visible here and failing on purpose is a valid test.
+ */
+private fun resolveTargets(context: Context, intent: Intent): ResolvedTargets {
+    val pm = context.packageManager
+    val kinds = linkedSetOf<TargetKind>()
+    var component: String? = null
+    fun flatten(pkg: String?, cls: String?): String? =
+        if (pkg != null && cls != null) ComponentName(pkg, cls).flattenToShortString() else null
+
+    runCatching {
+        @Suppress("DEPRECATION")
+        pm.resolveActivity(intent, 0)?.activityInfo?.let {
+            kinds += TargetKind.ACTIVITY
+            component = component ?: flatten(it.packageName, it.name)
+        }
+    }
+    runCatching {
+        @Suppress("DEPRECATION")
+        pm.resolveService(intent, 0)?.serviceInfo?.let {
+            kinds += TargetKind.SERVICE
+            component = component ?: flatten(it.packageName, it.name)
+        }
+    }
+    runCatching {
+        @Suppress("DEPRECATION")
+        val receivers = pm.queryBroadcastReceivers(intent, 0)
+        if (receivers.isNotEmpty()) {
+            kinds += TargetKind.RECEIVER
+            component = component ?: receivers.first().activityInfo?.let { flatten(it.packageName, it.name) }
+        }
+    }
+    return ResolvedTargets(kinds, component)
 }
