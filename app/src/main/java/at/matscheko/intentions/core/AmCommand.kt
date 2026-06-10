@@ -51,6 +51,7 @@ object AmCommand {
         ExtraType.INTENT -> emptyList()
         ExtraType.STRING, ExtraType.CHAR, ExtraType.UNKNOWN ->
             listOf("--es", quote(name), quote(value))
+        ExtraType.URI -> listOf("--eu", quote(name), quote(value))
         ExtraType.BOOLEAN -> listOf("--ez", quote(name), quote(value))
         ExtraType.INTEGER, ExtraType.SHORT, ExtraType.BYTE -> listOf("--ei", quote(name), quote(value))
         ExtraType.LONG -> listOf("--el", quote(name), quote(value))

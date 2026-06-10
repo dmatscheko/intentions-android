@@ -1,5 +1,6 @@
 package at.matscheko.intentions.model
 
+import android.net.Uri
 import android.os.Bundle
 import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
@@ -25,6 +26,7 @@ enum class ExtraType(val label: String, val editable: Boolean = true, val multil
     SHORT("Short"),
     BYTE("Byte"),
     CHAR("Character"),
+    URI("Uri"),
     NULL("null"),
     STRING_ARRAY("String[]", multiline = true),
     INT_ARRAY("int[]", multiline = true),
@@ -50,6 +52,7 @@ enum class ExtraType(val label: String, val editable: Boolean = true, val multil
             SHORT -> bundle.putShort(name, v.toShortOrNull() ?: 0)
             BYTE -> bundle.putByte(name, v.toByteOrNull() ?: 0)
             CHAR -> bundle.putChar(name, raw.firstOrNull() ?: ' ')
+            URI -> bundle.putParcelable(name, Uri.parse(v))
             NULL -> bundle.putString(name, null)
             STRING_ARRAY -> bundle.putStringArray(name, lines(raw).toTypedArray())
             INT_ARRAY -> bundle.putIntArray(name, lines(raw).map { it.toIntOrNull() ?: 0 }.toIntArray())
@@ -73,7 +76,7 @@ enum class ExtraType(val label: String, val editable: Boolean = true, val multil
         val v = raw.trim()
         if (v.isEmpty()) return true
         return when (this) {
-            STRING, NULL, INTENT, UNKNOWN, STRING_ARRAY, STRING_ARRAYLIST -> true
+            STRING, URI, NULL, INTENT, UNKNOWN, STRING_ARRAY, STRING_ARRAYLIST -> true
             BOOLEAN -> isBoolean(v)
             INTEGER -> v.toIntOrNull() != null
             LONG -> v.toLongOrNull() != null
@@ -128,6 +131,8 @@ enum class ExtraType(val label: String, val editable: Boolean = true, val multil
                 value.all { it is Int } -> INTEGER_ARRAYLIST to value.joinToString("\n")
                 else -> UNKNOWN to "(ArrayList) $value"
             }
+            // Covers every Uri subclass (HierarchicalUri, OpaqueUri, StringUri).
+            is Uri -> URI to value.toString()
             // A nested Intent value is handled in IntentSpec.readExtras (as a sub-spec).
             is CharSequence -> STRING to value.toString()
             else -> UNKNOWN to "(${value.javaClass.simpleName}) $value"

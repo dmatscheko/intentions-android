@@ -70,6 +70,20 @@ class IntentSpecRoundTripTest {
     }
 
     @Test
+    fun uriExtraRoundTrips() {
+        // A Uri lands in the bundle as a HierarchicalUri; it must come back as URI, not UNKNOWN.
+        val spec = IntentSpec(
+            hasExtras = true,
+            extras = listOf(ExtraEntry("u", "content://a/b?x=1", ExtraType.URI)),
+        )
+
+        val u = IntentSpec.from(spec.toIntent()).extras.single { it.name == "u" }
+
+        assertThat(u.type).isEqualTo(ExtraType.URI)
+        assertThat(u.value).isEqualTo("content://a/b?x=1")
+    }
+
+    @Test
     fun disabledSectionsAreOmitted() {
         val spec = IntentSpec(
             hasAction = true, action = "android.intent.action.VIEW",
