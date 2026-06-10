@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,13 +50,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import at.matscheko.intentions.core.AmCommand
 import at.matscheko.intentions.core.IntentActions
 import at.matscheko.intentions.core.IntentClipboard
 import at.matscheko.intentions.core.ManifestScanner.ScanKind
+import at.matscheko.intentions.core.ShellRunner
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
 import at.matscheko.intentions.ui.components.IntentCard
+import at.matscheko.intentions.ui.components.ShellRetryButton
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val INDENT = 16.dp
 
@@ -68,11 +75,19 @@ fun MainScreen(
     onPickShortcut: ((Intent) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var menuOpen by remember { mutableStateOf(false) }
+    var shellRunning by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result -> vm.onActivityResult(result.resultCode, result.data) }
+
+    // Show an execution result and, when it failed, the on-device `am` command to
+    // offer as a shell retry (root or not).
+    fun applyResult(result: IntentActions.ActionResult) {
+        vm.setResult(result.text, retryCommand = result.retryVerb?.let { AmCommand.onDevice(vm.spec, it) })
+    }
 
     Scaffold(
         topBar = {
@@ -196,33 +211,38 @@ fun MainScreen(
                         val intent = vm.spec.toIntent()
                         runCatching { launcher.launch(intent) }
                             .onSuccess { vm.setResult("Launched startActivity(intent).") }
-                            .onFailure { vm.setResult(launchFailureMessage(it)) }
+                            .onFailure {
+                                vm.setResult(
+                                    launchFailureMessage(it),
+                                    retryCommand = AmCommand.onDevice(vm.spec, "start"),
+                                )
+                            }
                     }) { Text("Activity") }
                 }
                 ExecuteGroup {
                     Button(onClick = {
                         vm.recordRecent()
-                        vm.setResult(IntentActions.sendBroadcast(context, vm.spec.toIntent()))
+                        applyResult(IntentActions.sendBroadcast(context, vm.spec.toIntent()))
                     }) { Text("Broadcast") }
                     Button(onClick = {
                         vm.recordRecent()
                         vm.setResult("Sending ordered broadcast…")
-                        IntentActions.sendOrderedBroadcast(context, vm.spec.toIntent()) { vm.setResult(it) }
+                        IntentActions.sendOrderedBroadcast(context, vm.spec.toIntent()) { applyResult(it) }
                     }) { Text("Ordered broadcast") }
                 }
                 ExecuteGroup {
                     Button(onClick = {
                         vm.recordRecent()
-                        vm.setResult(IntentActions.startService(context, vm.spec.toIntent()))
+                        applyResult(IntentActions.startService(context, vm.spec.toIntent()))
                     }) { Text("Start service") }
                     Button(onClick = {
                         vm.recordRecent()
-                        vm.setResult(IntentActions.stopService(context, vm.spec.toIntent()))
+                        applyResult(IntentActions.stopService(context, vm.spec.toIntent()))
                     }) { Text("Stop service") }
                     Button(onClick = {
                         vm.recordRecent()
                         vm.setResult("Binding service…")
-                        IntentActions.bindService(context, vm.spec.toIntent()) { vm.setResult(it) }
+                        IntentActions.bindService(context, vm.spec.toIntent()) { applyResult(it) }
                     }) { Text("Bind service") }
                 }
             }
@@ -238,6 +258,22 @@ fun MainScreen(
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
                         )
+                    }
+                }
+                // Offered after a failed execution: run the equivalent `am` command
+                // through a shell (root may get past a non-exported/permission block).
+                vm.executeRetryCommand?.let { command ->
+                    ShellRetryButton(
+                        enabled = !shellRunning,
+                        modifier = Modifier.padding(start = INDENT, top = 8.dp),
+                    ) { root ->
+                        shellRunning = true
+                        scope.launch {
+                            val out = withContext(Dispatchers.IO) { ShellRunner.run(command, root) }
+                            // Keep the retry offered so the other mode (su/sh) can still be tried.
+                            vm.setResult(out, retryCommand = command)
+                            shellRunning = false
+                        }
                     }
                 }
             }

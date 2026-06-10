@@ -17,30 +17,40 @@ import android.os.Looper
  */
 object IntentActions {
 
-    fun sendBroadcast(context: Context, intent: Intent): String = guarded("sendBroadcast") {
-        context.sendBroadcast(intent)
-        "Successfully executed sendBroadcast(intent)."
-    }
+    /**
+     * The outcome of dispatching an intent: the [text] to show, plus — when it failed
+     * in a way a shell `am` command might get past — the `am` [retryVerb] to offer
+     * (e.g. "start", "broadcast"). Null [retryVerb] means no shell retry is offered.
+     */
+    data class ActionResult(val text: String, val retryVerb: String? = null)
 
-    fun startService(context: Context, intent: Intent): String = guarded("startService") {
-        val component = context.startService(intent)
-        if (component == null) {
-            "Executed startService(intent) but no matching service was found."
-        } else {
-            "Successfully started service ${component.flattenToString()}."
+    fun sendBroadcast(context: Context, intent: Intent): ActionResult =
+        guarded("sendBroadcast", retryVerb = "broadcast") {
+            context.sendBroadcast(intent)
+            "Successfully executed sendBroadcast(intent)."
         }
-    }
 
-    fun stopService(context: Context, intent: Intent): String = guarded("stopService") {
-        if (context.stopService(intent)) {
-            "Successfully stopped service via stopService(intent)."
-        } else {
-            "stopService(intent) returned false — no running service was stopped."
+    fun startService(context: Context, intent: Intent): ActionResult =
+        guarded("startService", retryVerb = "start-service") {
+            val component = context.startService(intent)
+            if (component == null) {
+                "Executed startService(intent) but no matching service was found."
+            } else {
+                "Successfully started service ${component.flattenToString()}."
+            }
         }
-    }
+
+    fun stopService(context: Context, intent: Intent): ActionResult =
+        guarded("stopService", retryVerb = "stop-service") {
+            if (context.stopService(intent)) {
+                "Successfully stopped service via stopService(intent)."
+            } else {
+                "stopService(intent) returned false — no running service was stopped."
+            }
+        }
 
     /** Ordered broadcast — lets receivers set a result code/data/extras we then report. */
-    fun sendOrderedBroadcast(context: Context, intent: Intent, onResult: (String) -> Unit) {
+    fun sendOrderedBroadcast(context: Context, intent: Intent, onResult: (ActionResult) -> Unit) {
         try {
             context.sendOrderedBroadcast(
                 intent, null,
@@ -59,18 +69,18 @@ object IntentActions {
                                 sb.append("\n    $key = $value")
                             }
                         }
-                        onResult(sb.toString())
+                        onResult(ActionResult(sb.toString()))
                     }
                 },
                 Handler(Looper.getMainLooper()), 0, null, null,
             )
         } catch (e: Exception) {
-            onResult("Failed to send ordered broadcast.\n\n${e.stackTraceToString()}")
+            onResult(ActionResult("Failed to send ordered broadcast.\n\n${e.stackTraceToString()}", "broadcast"))
         }
     }
 
     /** Bind a service and report what we can about the returned binder, then unbind. */
-    fun bindService(context: Context, intent: Intent, onResult: (String) -> Unit) {
+    fun bindService(context: Context, intent: Intent, onResult: (ActionResult) -> Unit) {
         val finished = java.util.concurrent.atomic.AtomicBoolean(false)
         lateinit var connection: ServiceConnection
         connection = object : ServiceConnection {
@@ -86,7 +96,7 @@ object IntentActions {
                     sb.append("\n  alive: ${binder.isBinderAlive}")
                 }
                 sb.append("\n\nNote: without the service's AIDL we can only confirm the binding.")
-                onResult(sb.toString())
+                onResult(ActionResult(sb.toString()))
                 runCatching { context.unbindService(this) }
             }
 
@@ -94,19 +104,19 @@ object IntentActions {
         }
         try {
             if (!context.bindService(intent, connection, Context.BIND_AUTO_CREATE)) {
-                onResult("bindService(intent) returned false — service not found or access denied.")
+                onResult(ActionResult("bindService(intent) returned false — service not found or access denied."))
                 runCatching { context.unbindService(connection) }
                 return
             }
             // Safety net: if the service never connects, unbind so we don't leak.
             Handler(Looper.getMainLooper()).postDelayed({
                 if (finished.compareAndSet(false, true)) {
-                    onResult("Bound, but the service did not connect within 5s. Unbound.")
+                    onResult(ActionResult("Bound, but the service did not connect within 5s. Unbound."))
                     runCatching { context.unbindService(connection) }
                 }
             }, 5_000)
         } catch (e: Exception) {
-            onResult("Failed to bind service.\n\n${e.stackTraceToString()}")
+            onResult(ActionResult("Failed to bind service.\n\n${e.stackTraceToString()}"))
         }
     }
 
@@ -116,6 +126,7 @@ object IntentActions {
             onFailure = { "Could not read manifest.\n\n${it.stackTraceToString()}" },
         )
 
-    private inline fun guarded(op: String, block: () -> String): String =
-        runCatching(block).getOrElse { "Failed to execute $op(intent).\n\n${it.stackTraceToString()}" }
+    private inline fun guarded(op: String, retryVerb: String?, block: () -> String): ActionResult =
+        runCatching { ActionResult(block()) }
+            .getOrElse { ActionResult("Failed to execute $op(intent).\n\n${it.stackTraceToString()}", retryVerb) }
 }

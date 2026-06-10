@@ -26,7 +26,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -45,7 +44,9 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import at.matscheko.intentions.core.Permissions
 import at.matscheko.intentions.core.ProtectionLevel
+import at.matscheko.intentions.core.ShellRunner
 import at.matscheko.intentions.ui.AppViewModel
+import at.matscheko.intentions.ui.components.ShellRetryButton
 import at.matscheko.intentions.ui.Routes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -77,11 +78,12 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
         }
     }
 
-    fun retryViaShell(target: String) {
+    fun retryViaShell(target: String, root: Boolean) {
         loading = true
         scope.launch {
-            result = withContext(Dispatchers.IO) { runViaRootShell(target) }
-            shellRetryUri = null
+            val command = "content query --uri ${ShellRunner.quote(target)}"
+            result = withContext(Dispatchers.IO) { ShellRunner.run(command, root) }
+            // Keep the retry offered so the other mode (su/sh) can still be tried.
             loading = false
         }
     }
@@ -133,11 +135,9 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
 
             if (loading) CircularProgressIndicator()
 
-            // Offered after a denial: root may bypass a permission/SAF restriction.
+            // Offered after a denial: a shell (root or not) may get past the restriction.
             shellRetryUri?.let { target ->
-                OutlinedButton(enabled = !loading, onClick = { retryViaShell(target) }) {
-                    Text("Run via root shell")
-                }
+                ShellRetryButton(enabled = !loading) { root -> retryViaShell(target, root) }
             }
 
             if (result.isNotEmpty()) {
@@ -163,27 +163,32 @@ private data class QueryResult(val text: String, val shellRetryUri: String? = nu
 
 private fun query(context: Context, uriString: String): QueryResult = try {
     val uri = Uri.parse(uriString)
-    val text = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
-        buildString {
-            appendLine(c.columnNames.joinToString(" | "))
-            appendLine("-".repeat(40))
-            var rows = 0
-            while (c.moveToNext() && rows < 500) {
-                val cells = (0 until c.columnCount).joinToString(" | ") { i ->
-                    runCatching { c.getString(i) ?: "null" }.getOrDefault("<blob>")
+    val cursor = context.contentResolver.query(uri, null, null, null, null)
+    if (cursor == null) {
+        // No provider / access denied — a shell (root) may still reach it.
+        QueryResult("Query returned null — provider not found or access denied.", shellRetryUri = uriString)
+    } else cursor.use { c ->
+        QueryResult(
+            buildString {
+                appendLine(c.columnNames.joinToString(" | "))
+                appendLine("-".repeat(40))
+                var rows = 0
+                while (c.moveToNext() && rows < 500) {
+                    val cells = (0 until c.columnCount).joinToString(" | ") { i ->
+                        runCatching { c.getString(i) ?: "null" }.getOrDefault("<blob>")
+                    }
+                    appendLine(cells)
+                    rows++
                 }
-                appendLine(cells)
-                rows++
-            }
-            if (rows == 0) {
-                appendLine("(no rows)")
-                emptyResultHint(context, uri)?.let { appendLine("\n$it") }
-            } else {
-                appendLine("\n$rows row(s)")
-            }
-        }
-    } ?: "Query returned null — provider not found or access denied."
-    QueryResult(text)
+                if (rows == 0) {
+                    appendLine("(no rows)")
+                    emptyResultHint(context, uri)?.let { appendLine("\n$it") }
+                } else {
+                    appendLine("\n$rows row(s)")
+                }
+            },
+        )
+    }
 } catch (e: SecurityException) {
     // Expected for providers locked to the system or the Storage Access Framework:
     // they throw at acquire-time, so present a concise reason instead of a trace.
@@ -194,7 +199,7 @@ private fun query(context: Context, uriString: String): QueryResult = try {
     )
 } catch (e: UnsupportedOperationException) {
     // The provider exists but doesn't implement query() — common for providers that
-    // only expose call() / openFile() / insert(). A root shell can't help here.
+    // only expose call() / openFile() / insert(). A shell can't help here, so no retry.
     QueryResult(
         "This provider doesn't support querying.\n\n" +
             (e.message?.trim()?.takeIf { it.isNotEmpty() }?.let { "$it\n\n" } ?: "") +
@@ -202,29 +207,10 @@ private fun query(context: Context, uriString: String): QueryResult = try {
             "support other operations such as call(), insert(), getType() or openFile().",
     )
 } catch (e: Exception) {
-    QueryResult("Error: ${e.message}\n\n${e.stackTraceToString()}")
+    // Any other failure: show the error and still offer a shell retry, which may
+    // behave differently (e.g. as root, or a differently-enforced caller identity).
+    QueryResult("Error: ${e.message}\n\n${e.stackTraceToString()}", shellRetryUri = uriString)
 }
-
-/**
- * Run `content query` through a root shell (`su`). This bypasses app-uid
- * permission checks on rooted devices; on a stock device `su` is absent and we
- * fall back to telling the user to run it from a computer over adb.
- */
-private fun runViaRootShell(uriString: String): String = try {
-    val command = "content query --uri ${shellQuote(uriString)}"
-    val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
-    val output = process.inputStream.bufferedReader().use { it.readText() }
-    process.waitFor()
-    val body = output.trim().ifEmpty { "(no output)" }
-    "$ su -c $command\n\n$body"
-} catch (e: Exception) {
-    "Couldn't run via root shell: ${e.message}\n\n" +
-        "This needs root (su), which doesn't seem available. Run it from a computer instead:\n" +
-        "adb shell content query --uri $uriString"
-}
-
-/** Single-quote a token for a `su -c` shell command line. */
-private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 
 /** Turn a provider [SecurityException] into a short, actionable explanation. */
 private fun securityDenialMessage(uri: Uri?, e: SecurityException): String {

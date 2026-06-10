@@ -55,6 +55,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var resultSpec by mutableStateOf<IntentSpec?>(null)
         private set
 
+    /** On-device shell command offered to retry a failed execution (null = none). */
+    var executeRetryCommand by mutableStateOf<String?>(null)
+        private set
+
     /** A spec opened for read-only inspection (e.g. a result intent). */
     var viewSpec by mutableStateOf<IntentSpec?>(null)
         private set
@@ -238,9 +242,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- results -------------------------------------------------------------
 
-    fun setResult(text: String, result: Intent? = null) {
+    fun setResult(text: String, retryCommand: String? = null, result: Intent? = null) {
         resultText = text
         resultSpec = result?.let { IntentSpec.from(it) }
+        executeRetryCommand = retryCommand
     }
 
     fun onActivityResult(resultCode: Int, data: Intent?) {
@@ -248,6 +253,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         resultText = "$base\n\nResultCode: $resultCode" +
             if (data == null) "\nNo result intent returned" else ""
         resultSpec = data?.let { IntentSpec.from(it) }
+        executeRetryCommand = null
     }
 
     // --- bookmarks -----------------------------------------------------------

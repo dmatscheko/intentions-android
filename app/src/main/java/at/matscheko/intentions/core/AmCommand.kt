@@ -13,6 +13,10 @@ import at.matscheko.intentions.model.IntentSpec
  */
 object AmCommand {
 
+    /** The same command without the `adb shell` prefix, for running on-device via a shell. */
+    fun onDevice(spec: IntentSpec, verb: String = "start"): String =
+        build(spec, verb).removePrefix("adb shell ")
+
     fun build(spec: IntentSpec, verb: String = "start"): String {
         val parts = mutableListOf("adb", "shell", "am", verb)
 
