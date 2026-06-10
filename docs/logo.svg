@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="108" height="108" viewBox="0 0 108 108" role="img" aria-labelledby="title desc">
+  <title id="title">Intentions logo</title>
+  <desc id="desc">A dispatch hub: one intent routed out to several target components.</desc>
+  <defs>
+    <linearGradient id="backdrop" x1="8" y1="8" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A2980"/>
+      <stop offset="0.55" stop-color="#1F6FB2"/>
+      <stop offset="1" stop-color="#26D0CE"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Backdrop: inset rounded square emulating Android's icon mask -->
+  <rect x="8" y="8" width="92" height="92" rx="20" ry="20" fill="url(#backdrop)" filter="url(#shadow)"/>
+
+  <!-- Dispatch hub: centre node routed out to three targets (scaled to match the app icon) -->
+  <g transform="translate(54,54) scale(0.8) translate(-54,-54)">
+    <g fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round">
+      <path d="M54,54 L54,26"/>
+      <path d="M54,54 L31,78"/>
+      <path d="M54,54 L77,78"/>
+    </g>
+    <g fill="#FFFFFF">
+      <circle cx="54" cy="26" r="7"/>
+      <circle cx="31" cy="78" r="7"/>
+      <circle cx="77" cy="78" r="7"/>
+    </g>
+    <circle cx="54" cy="54" r="11" fill="#FFCA28"/>
+  </g>
+</svg>

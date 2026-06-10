@@ -1,0 +1,246 @@
+package at.matscheko.intentions.ui.screens
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
+import at.matscheko.intentions.core.AmCommand
+import at.matscheko.intentions.core.IntentClipboard
+import at.matscheko.intentions.core.IntentFlags
+import at.matscheko.intentions.core.IntentSuggestions
+import at.matscheko.intentions.model.ExtraType
+import at.matscheko.intentions.core.Shortcuts
+import at.matscheko.intentions.core.toast
+import at.matscheko.intentions.ui.AppViewModel
+import at.matscheko.intentions.ui.Routes
+import at.matscheko.intentions.ui.components.AutoCompleteField
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun EditIntentScreen(vm: AppViewModel, nav: NavController, path: List<Int> = emptyList()) {
+    val spec = vm.specAt(path)
+    val context = LocalContext.current
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(if (path.isEmpty()) "Edit intent" else "Edit nested intent") },
+                navigationIcon = {
+                    IconButton(onClick = { nav.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    var menuOpen by remember { mutableStateOf(false) }
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More")
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(text = { Text("Copy as adb command") }, onClick = {
+                            menuOpen = false
+                            IntentClipboard.copyText(context, AmCommand.build(spec), "adb command")
+                            val omitted = AmCommand.omittedExtraCount(spec)
+                            toast(
+                                context,
+                                if (omitted > 0) "Copied — $omitted nested-intent extra(s) omitted"
+                                else "Copied adb command",
+                            )
+                        })
+                        DropdownMenuItem(text = { Text("Create home-screen shortcut") }, onClick = {
+                            menuOpen = false
+                            val label = listOf(
+                                spec.action.takeIf { spec.hasAction && it.isNotBlank() }?.substringAfterLast('.'),
+                                spec.className.substringAfterLast('.').takeIf { it.isNotBlank() },
+                                spec.packageName.substringAfterLast('.').takeIf { it.isNotBlank() },
+                            ).firstOrNull { !it.isNullOrBlank() } ?: "Intent"
+                            val ok = Shortcuts.pin(context, spec.toIntent(), label, spec.packageName)
+                            toast(context, if (ok) "Shortcut requested" else "Shortcuts not supported here")
+                        })
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Section("Component", spec.hasComponent, { c -> vm.updateAt(path) { it.copy(hasComponent = c) } }) {
+                OutlinedTextField(
+                    value = spec.packageName,
+                    onValueChange = { v -> vm.updateAt(path) { it.copy(packageName = v) } },
+                    label = { Text("Package") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = spec.className,
+                    onValueChange = { v -> vm.updateAt(path) { it.copy(className = v) } },
+                    label = { Text("Class") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            Section("Action", spec.hasAction, { c -> vm.updateAt(path) { it.copy(hasAction = c) } }) {
+                AutoCompleteField(
+                    value = spec.action,
+                    onValueChange = { v -> vm.updateAt(path) { it.copy(action = v) } },
+                    label = "Action",
+                    suggestions = IntentSuggestions.actions,
+                )
+            }
+
+            Section("Data", spec.hasData, { c -> vm.updateAt(path) { it.copy(hasData = c) } }) {
+                OutlinedTextField(
+                    value = spec.dataUri,
+                    onValueChange = { v -> vm.updateAt(path) { it.copy(dataUri = v) } },
+                    label = { Text("URI") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = spec.mimeType,
+                    onValueChange = { v -> vm.updateAt(path) { it.copy(mimeType = v) } },
+                    label = { Text("MIME type") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                // For a content:// URI with no explicit type, show the type the
+                // ContentResolver reports (README TODO: "show content type…").
+                if (spec.mimeType.isBlank() && spec.dataUri.startsWith("content://")) {
+                    val context = LocalContext.current
+                    val resolved by produceState<String?>(null, spec.dataUri) {
+                        value = withContext(Dispatchers.IO) {
+                            runCatching {
+                                context.contentResolver.getType(android.net.Uri.parse(spec.dataUri))
+                            }.getOrNull()
+                        }
+                    }
+                    resolved?.let {
+                        Text(
+                            "Resolved content type: $it",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            Section("Categories", spec.hasCategories, { c -> vm.updateAt(path) { it.copy(hasCategories = c) } }) {
+                val active = spec.categories.filter { it.isNotBlank() }
+                Text(
+                    if (active.isEmpty()) "No categories" else active.joinToString("\n"),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedButton(onClick = { nav.navigate(Routes.categories(path)) }) {
+                    Text("Edit categories")
+                }
+            }
+
+            Section("Extras", spec.hasExtras, { c -> vm.updateAt(path) { it.copy(hasExtras = c) } }) {
+                val active = spec.extras.filter { it.name.isNotBlank() }
+                Text(
+                    if (active.isEmpty()) "No extras"
+                    else active.joinToString("\n") {
+                        if (it.type == ExtraType.INTENT) "${it.name}: (nested intent)"
+                        else "${it.name}: ${it.value} (${it.type.label})"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedButton(onClick = { nav.navigate(Routes.extras(path)) }) {
+                    Text("Edit extras")
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Flags", style = MaterialTheme.typography.titleMedium)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        IntentFlags.COMMON.forEach { flag ->
+                            val selected = spec.flags and flag.value != 0
+                            FilterChip(
+                                selected = selected,
+                                onClick = {
+                                    vm.updateAt(path) {
+                                        val set = it.flags and flag.value != 0
+                                        it.copy(
+                                            flags = if (set) it.flags and flag.value.inv()
+                                            else it.flags or flag.value
+                                        )
+                                    }
+                                },
+                                label = { Text(flag.label) },
+                            )
+                        }
+                    }
+                    if (spec.flags != 0) {
+                        Text(
+                            "Value: 0x${Integer.toHexString(spec.flags)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Section(
+    title: String,
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Switch(checked = enabled, onCheckedChange = onEnabledChange)
+            }
+            if (enabled) content()
+        }
+    }
+}

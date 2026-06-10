@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A "dispatch hub": one intent routed out to several target components.
+         Scaled in around the centre so the outer nodes sit inside the icon
+         keyline instead of crowding the edge. -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="6"
+            android:strokeLineCap="round"
+            android:pathData="M54,54 L54,26 M54,54 L31,78 M54,54 L77,78" />
+        <!-- The three target nodes, in white. -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M47,26 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 z
+                M24,78 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 z
+                M70,78 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 z" />
+        <!-- The central dispatch node, in amber (matches the brand accent). -->
+        <path
+            android:fillColor="#FFFFCA28"
+            android:pathData="M43,54 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0 z" />
+    </group>
+</vector>

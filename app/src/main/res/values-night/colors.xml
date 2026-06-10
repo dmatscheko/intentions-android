@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark splash/window background, so the launch screen matches the app in
+         dark mode (tracks the Material 3 dark surface colour). -->
+    <color name="window_background">#FF1A1C1E</color>
+</resources>

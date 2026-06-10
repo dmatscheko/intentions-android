@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base theme for the splash/window before Compose takes over. The brand
+         window background (overridden in values-night) keeps the launch screen
+         from flashing white, in light or dark mode. -->
+    <style name="Theme.Intentions" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>
