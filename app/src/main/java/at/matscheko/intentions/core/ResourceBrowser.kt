@@ -1,9 +1,11 @@
 package at.matscheko.intentions.core
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.res.Resources
 import android.graphics.drawable.Drawable
+import android.util.TypedValue
 import androidx.core.content.res.ResourcesCompat
 import java.io.InputStream
 import java.util.zip.ZipFile
@@ -25,8 +27,10 @@ import java.util.zip.ZipFile
  */
 class ResourceBrowser(context: Context) {
 
-    private val pm: PackageManager = context.applicationContext.packageManager
+    private val appContext = context.applicationContext
+    private val pm: PackageManager = appContext.packageManager
     private val resourcesCache = HashMap<String, Resources?>()
+    private val listCache = HashMap<String, List<ResEntry>>()
 
     enum class Category { IMAGE, TEXT }
 
@@ -43,33 +47,49 @@ class ResourceBrowser(context: Context) {
             runCatching { pm.getResourcesForApplication(pkg) }.getOrNull()
         }
 
-    fun list(pkg: String): List<ResEntry> {
-        val res = resources(pkg) ?: return emptyList()
-        val appInfo = runCatching { pm.getApplicationInfo(pkg, 0) }.getOrNull() ?: return emptyList()
+    @Synchronized
+    fun list(pkg: String): List<ResEntry> = listCache.getOrPut(pkg) {
+        val res = resources(pkg) ?: return@getOrPut emptyList()
+        val appInfo = runCatching { pm.getApplicationInfo(pkg, 0) }.getOrNull()
+            ?: return@getOrPut emptyList()
+
+        // id -> entry, so a resource discovered via several routes de-dupes.
+        val byId = LinkedHashMap<Int, ResEntry>()
+
+        // 1. Names recovered from APK file paths. Fast and works when the build kept
+        //    readable resource paths; misses resources flattened to e.g. res/aB.xml.
         val apks = buildList {
             appInfo.sourceDir?.let { add(it) }
             appInfo.splitSourceDirs?.let { addAll(it) }
         }
-        // (type, name) -> de-dupes a resource that appears in several density /
-        // qualifier folders (e.g. drawable-hdpi + drawable-xhdpi).
-        val found = LinkedHashSet<Pair<String, String>>()
+        val byPath = LinkedHashSet<Pair<String, String>>()
         for (apk in apks) {
             runCatching {
                 ZipFile(apk).use { zip ->
                     val entries = zip.entries()
                     while (entries.hasMoreElements()) {
                         val match = ENTRY.matchEntire(entries.nextElement().name) ?: continue
-                        found.add(match.groupValues[1].lowercase() to match.groupValues[2])
+                        byPath.add(match.groupValues[1].lowercase() to match.groupValues[2])
                     }
                 }
             }
         }
-        return found.mapNotNull { (type, name) ->
+        for ((type, name) in byPath) {
             val id = res.getIdentifier(name, type, pkg)
-            if (id == 0) return@mapNotNull null
-            ResEntry(type, name, id, categoryOf(type))
-        }.sortedWith(compareBy({ it.category }, { it.type }, { it.name }))
+            if (id != 0) byId.putIfAbsent(id, ResEntry(type, name, id, categoryOf(type)))
+        }
+
+        // 2. Resource-table sweep: recovers file resources whose APK paths were
+        //    flattened/obfuscated, reading their real names from the resource table.
+        enumerateFileResources(res, packageId(appInfo), byId)
+
+        val entries = (byId.values + manifestEntry())
+            .sortedWith(compareBy({ it.category }, { it.type }, { it.name }))
+        entries
     }
+
+    /** A synthetic entry for the app's combined manifest(s), shown in the text list. */
+    private fun manifestEntry() = ResEntry("manifest", "AndroidManifest.xml", 0, Category.TEXT)
 
     fun drawable(pkg: String, id: Int): Drawable? {
         val res = resources(pkg) ?: return null
@@ -82,9 +102,11 @@ class ResourceBrowser(context: Context) {
      */
     fun text(pkg: String, entry: ResEntry): String? {
         if (entry.category != Category.TEXT) return null
+        // The synthetic manifest entry renders every APK's manifest (base + splits).
+        if (entry.type == "manifest") return ManifestReader.read(appContext, pkg).getOrNull()
         val res = resources(pkg) ?: return null
         return if (entry.type == "raw") readRaw(res, entry.id)
-        else runCatching { res.getXml(entry.id).use { ManifestReader.render(it) } }.getOrNull()
+        else runCatching { res.getXml(entry.id).use { ManifestReader.render(it, res, pkg) } }.getOrNull()
     }
 
     private fun readRaw(res: Resources, id: Int): String? = runCatching {
@@ -94,6 +116,50 @@ class ResourceBrowser(context: Context) {
             if (bytes.any { it == 0.toByte() }) null else bytes.toString(Charsets.UTF_8)
         }
     }.getOrNull()
+
+    /** The package id (high byte of resource ids) the app's own resources live under. */
+    private fun packageId(appInfo: ApplicationInfo): Int {
+        val anchor = intArrayOf(appInfo.icon, appInfo.labelRes, appInfo.logo, appInfo.theme)
+            .firstOrNull { it != 0 } ?: return 0x7f
+        return (anchor ushr 24) and 0xFF
+    }
+
+    /**
+     * Sweep the compiled resource table by id to recover file-backed resources of
+     * the types we surface, including those whose APK paths were flattened so the
+     * zip walk can't name them. Value resources (strings, colors, dimens, …) have no
+     * file path and are skipped. Ids are `0xPPTTEEEE` (package / type / entry); types
+     * and entries are allocated densely from 1 and 0, so we stop after a run of gaps.
+     */
+    private fun enumerateFileResources(res: Resources, packageId: Int, out: MutableMap<Int, ResEntry>) {
+        if (packageId == 0) return
+        val tv = TypedValue()
+        var emptyTypes = 0
+        var typeId = 1
+        while (typeId <= 0xFF && emptyTypes < EMPTY_TYPE_LIMIT) {
+            var entryId = 0
+            var misses = 0
+            var anyInType = false
+            while (misses < EMPTY_ENTRY_LIMIT) {
+                val id = (packageId shl 24) or (typeId shl 16) or entryId
+                entryId++
+                val resolved = runCatching { res.getValue(id, tv, true); true }.getOrDefault(false)
+                if (!resolved) { misses++; continue }
+                misses = 0
+                anyInType = true
+                if (out.containsKey(id)) continue
+                // Only file-backed resources carry a "res/..." path in the table.
+                val path = tv.string?.toString()
+                if (path == null || !path.startsWith("res/")) continue
+                val type = runCatching { res.getResourceTypeName(id) }.getOrNull()?.lowercase() ?: continue
+                if (type !in FILE_TYPES) continue
+                val name = runCatching { res.getResourceEntryName(id) }.getOrNull() ?: continue
+                out[id] = ResEntry(type, name, id, categoryOf(type))
+            }
+            if (anyInType) emptyTypes = 0 else emptyTypes++
+            typeId++
+        }
+    }
 
     private fun categoryOf(type: String): Category =
         if (type == "drawable" || type == "mipmap") Category.IMAGE else Category.TEXT
@@ -111,6 +177,14 @@ class ResourceBrowser(context: Context) {
 
     private companion object {
         const val MAX_RAW_BYTES = 512 * 1024
+        // How many consecutive missing entries / empty types end a table sweep.
+        const val EMPTY_ENTRY_LIMIT = 48
+        const val EMPTY_TYPE_LIMIT = 8
+        // The file-backed resource types we surface (mirrors [ENTRY]).
+        val FILE_TYPES = setOf(
+            "drawable", "mipmap", "xml", "raw", "layout", "menu", "anim",
+            "animator", "color", "interpolator", "transition", "navigation", "font",
+        )
         // res/<type>[-<qualifiers>]/<name>.<ext> — captures the base resource
         // type, entry name and extension. Images keep their old set; text
         // resources cover xml/raw plus the other compiled-XML folders.

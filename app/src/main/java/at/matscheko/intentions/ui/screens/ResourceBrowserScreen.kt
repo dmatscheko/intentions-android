@@ -278,7 +278,10 @@ private fun TextResourceDialog(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    TextButton(onClick = { onUseUri(uri) }) { Text("Use as data URI") }
+                    // The manifest is a synthetic entry, not a real resource URI.
+                    if (entry.id != 0) {
+                        TextButton(onClick = { onUseUri(uri) }) { Text("Use as data URI") }
+                    }
                     TextButton(onClick = onDismiss) { Text("Close") }
                 }
             }

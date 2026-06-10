@@ -1,6 +1,7 @@
 package at.matscheko.intentions.core
 
 import android.content.Context
+import android.content.res.Resources
 import android.content.res.XmlResourceParser
 import org.xmlpull.v1.XmlPullParser
 
@@ -18,7 +19,10 @@ object ManifestReader {
      * manager also holds. Each section is labelled "Base APK" or "Split: <name>".
      */
     fun read(context: Context, packageName: String): Result<String> = runCatching {
-        val assets = context.createPackageContext(packageName, 0).assets
+        val pkgContext = context.createPackageContext(packageName, 0)
+        val assets = pkgContext.assets
+        // The app's own Resources, used to resolve @<id> references to names.
+        val res = pkgContext.resources
         val sections = mutableListOf<Pair<String, String>>() // label -> rendered body
         var cookie = 1
         var consecutiveMisses = 0
@@ -44,7 +48,7 @@ object ManifestReader {
                     val split = p.getAttributeValue(null, "split")
                     val label = if (split.isNullOrEmpty()) "Base APK" else "Split: $split"
                     // p is positioned at the <manifest> start tag; render from there.
-                    sections += label to render(p)
+                    sections += label to render(p, res, packageName)
                 }
             }
         }
@@ -59,8 +63,18 @@ object ManifestReader {
      * Pretty-print a compiled (binary) XML resource as indented text. Renders from
      * the parser's current position, so it works on a fresh parser (at the document
      * start) or one already advanced to a start tag.
+     *
+     * When [res] is supplied, attribute values that are resource references (which
+     * the compiled XML stores only as numeric ids, e.g. `@2131623937`) are annotated
+     * with their resolved name, e.g. `@2131623937=@style/AppTheme` — keeping both the
+     * raw id and the human-readable reference. [ownerPackage] lets references into the
+     * app's own package render in the short `@type/name` form.
      */
-    fun render(parser: XmlResourceParser): String = buildString {
+    fun render(
+        parser: XmlResourceParser,
+        res: Resources? = null,
+        ownerPackage: String? = null,
+    ): String = buildString {
         var depth = 0
         var event = parser.eventType
         if (event == XmlPullParser.START_DOCUMENT) event = parser.next()
@@ -70,7 +84,7 @@ object ManifestReader {
                     append("\t".repeat(depth)).append('<').append(parser.name)
                     for (i in 0 until parser.attributeCount) {
                         append(' ').append(parser.getAttributeName(i))
-                            .append("=\"").append(parser.getAttributeValue(i)).append('"')
+                            .append("=\"").append(attributeValue(parser, i, res, ownerPackage)).append('"')
                     }
                     append(">\n")
                     depth++
@@ -83,5 +97,23 @@ object ManifestReader {
             }
             event = parser.next()
         }
+    }
+
+    /** Raw attribute value, plus the resolved reference name when it is an `@id`. */
+    private fun attributeValue(
+        parser: XmlResourceParser,
+        index: Int,
+        res: Resources?,
+        ownerPackage: String?,
+    ): String? {
+        val raw = parser.getAttributeValue(index)
+        val resId = parser.getAttributeResourceValue(index, 0)
+        if (resId == 0 || res == null) return raw
+        val fullName = runCatching { res.getResourceName(resId) }.getOrNull() ?: return raw
+        // fullName is "pkg:type/name"; drop the package for the app's own resources.
+        val pkg = fullName.substringBefore(':')
+        val typeName = fullName.substringAfter(':')
+        val ref = if (pkg == ownerPackage) "@$typeName" else "@$pkg:$typeName"
+        return "$raw=$ref"
     }
 }
