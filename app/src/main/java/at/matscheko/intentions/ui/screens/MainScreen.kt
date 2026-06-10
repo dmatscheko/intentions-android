@@ -1,5 +1,6 @@
 package at.matscheko.intentions.ui.screens
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -195,7 +196,7 @@ fun MainScreen(
                         val intent = vm.spec.toIntent()
                         runCatching { launcher.launch(intent) }
                             .onSuccess { vm.setResult("Launched startActivity(intent).") }
-                            .onFailure { vm.setResult("Failed to launch startActivity(intent).\n\n${it.stackTraceToString()}") }
+                            .onFailure { vm.setResult(launchFailureMessage(it)) }
                     }) { Text("Activity") }
                 }
                 ExecuteGroup {
@@ -306,3 +307,20 @@ private fun browserItems(): List<Pair<String, ScanKind>> = listOf(
     "Show all data mime types" to ScanKind.MIME_TYPES,
     "Show all data authorities" to ScanKind.AUTHORITIES,
 )
+
+/** Turn a startActivity failure into a concise explanation instead of a stack trace. */
+private fun launchFailureMessage(t: Throwable): String {
+    val reason = t.message?.trim().orEmpty()
+    val explanation = when (t) {
+        is ActivityNotFoundException ->
+            "No activity matched this intent. The target may not be an activity (e.g. it's a " +
+                "receiver or service — use the Broadcast or Service buttons instead), may not be " +
+                "exported, or no installed app handles this action/data."
+        is SecurityException ->
+            "Permission denied. The activity may not be exported to other apps, or it requires a " +
+                "permission this app doesn't hold."
+        else -> "The activity couldn't be started."
+    }
+    return "Couldn't launch startActivity(intent).\n\n$explanation" +
+        (if (reason.isNotEmpty()) "\n\n$reason" else "")
+}

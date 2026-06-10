@@ -50,7 +50,7 @@ fun PackageExplorerScreen(vm: AppViewModel, nav: NavController) {
     val apps = vm.apps
     val selectedPackage = vm.spec.packageName
     val listState = rememberLazyListState()
-    var query by remember { mutableStateOf("") }
+    val query = vm.appsQuery
 
     val shown = remember(apps, query) {
         val q = query.trim()
@@ -92,7 +92,7 @@ fun PackageExplorerScreen(vm: AppViewModel, nav: NavController) {
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             OutlinedTextField(
                 value = query,
-                onValueChange = { query = it },
+                onValueChange = { vm.appsQuery = it },
                 label = { Text("Search apps" + (apps?.let { " (${it.size})" } ?: "")) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),

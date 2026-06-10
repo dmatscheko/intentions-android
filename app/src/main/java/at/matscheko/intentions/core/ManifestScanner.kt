@@ -2,10 +2,13 @@ package at.matscheko.intentions.core
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.content.pm.ComponentInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageItemInfo
 import android.content.pm.PackageManager
+import android.content.pm.ProviderInfo
+import android.content.pm.ServiceInfo
 import android.content.res.XmlResourceParser
 import android.graphics.drawable.Drawable
 import org.xmlpull.v1.XmlPullParser
@@ -35,6 +38,10 @@ class ManifestScanner(context: Context) {
         val exported: Boolean = false,
         /** True when this entry declares its own icon (vs. inheriting the app icon). */
         val hasIcon: Boolean = false,
+        /** Permission another app needs to use this component (read permission for providers), if any. */
+        val permission: String? = null,
+        /** Protection level of [permission], resolved at scan time. */
+        val permissionLevel: ProtectionLevel = ProtectionLevel.NONE,
     )
 
     data class ComponentSection(val title: String, val items: List<ComponentItem>)
@@ -44,6 +51,8 @@ class ManifestScanner(context: Context) {
         val packageName: String,
         val exported: Boolean,
         val readPermission: String?,
+        /** Protection level of [readPermission], resolved at scan time. */
+        val readPermissionLevel: ProtectionLevel = ProtectionLevel.NONE,
         /** Path patterns the app declared in its manifest (best-effort, often empty). */
         val declaredPaths: List<String> = emptyList(),
     )
@@ -79,8 +88,12 @@ class ManifestScanner(context: Context) {
                     info.pathPermissions?.forEach { it.path?.let(::add) }
                     info.uriPermissionPatterns?.forEach { it.path?.let(::add) }
                 }.filter { it.isNotBlank() }.distinct()
+                val level = Permissions.levelOf(pm, info.readPermission)
                 (info.authority ?: "").split(';').filter { it.isNotBlank() }.map { authority ->
-                    ProviderEntry(authority, info.packageName, info.exported, info.readPermission, declared)
+                    ProviderEntry(
+                        authority, info.packageName, info.exported,
+                        info.readPermission, level, declared,
+                    )
                 }
             }
             .distinctBy { it.authority }
@@ -111,8 +124,10 @@ class ManifestScanner(context: Context) {
     /** Components (activities/services/receivers/providers) plus declared filter actions. */
     fun components(packageName: String): List<ComponentSection> {
         val sections = mutableListOf<ComponentSection>()
-        // className -> whether it declares its own icon, so filter rows can match.
+        // className -> icon/permission of the declaring component, so filter rows
+        // (scraped separately from XML) can inherit both from their component.
         val iconByClass = HashMap<String, Boolean>()
+        val permByClass = HashMap<String, String?>()
         runCatching {
             @Suppress("DEPRECATION")
             val flags = PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or
@@ -126,12 +141,12 @@ class ManifestScanner(context: Context) {
                 PackageManager.MATCH_DIRECT_BOOT_AWARE or
                 PackageManager.MATCH_DIRECT_BOOT_UNAWARE
             val info: PackageInfo = pm.getPackageInfo(packageName, flags)
-            section("Activities", info.activities, "activity", iconByClass)?.let { sections += it }
-            section("Services", info.services, "service", iconByClass)?.let { sections += it }
-            section("Receivers", info.receivers, "receiver", iconByClass)?.let { sections += it }
-            section("Providers", info.providers, "provider", iconByClass)?.let { sections += it }
+            section("Activities", info.activities, "activity", iconByClass, permByClass)?.let { sections += it }
+            section("Services", info.services, "service", iconByClass, permByClass)?.let { sections += it }
+            section("Receivers", info.receivers, "receiver", iconByClass, permByClass)?.let { sections += it }
+            section("Providers", info.providers, "provider", iconByClass, permByClass)?.let { sections += it }
         }
-        filterActions(packageName, iconByClass)
+        filterActions(packageName, iconByClass, permByClass)
             .takeIf { it.isNotEmpty() }
             ?.let { sections += ComponentSection("Intent filters", it) }
         return sections
@@ -142,6 +157,7 @@ class ManifestScanner(context: Context) {
         items: Array<out PackageItemInfo>?,
         kind: String,
         iconByClass: MutableMap<String, Boolean>,
+        permByClass: MutableMap<String, String?>,
     ): ComponentSection? {
         if (items.isNullOrEmpty()) return null
         val rows = items.map { item ->
@@ -149,16 +165,30 @@ class ManifestScanner(context: Context) {
             val exported = (item as? ComponentInfo)?.exported == true
             val hasIcon = item.icon != 0
             iconByClass[item.name] = hasIcon
+            // The permission another app must hold to use this component (providers
+            // are read-gated; activities/services/receivers use their `permission`).
+            val permission = when (item) {
+                is ProviderInfo -> item.readPermission
+                is ActivityInfo -> item.permission // also covers receivers
+                is ServiceInfo -> item.permission
+                else -> null
+            }
+            permByClass[item.name] = permission
             ComponentItem(
                 item.packageName ?: "", item.name, label, kind,
                 exported = exported, hasIcon = hasIcon,
+                permission = permission, permissionLevel = Permissions.levelOf(pm, permission),
             )
         }.sortedBy { it.className }
         return ComponentSection(title, rows)
     }
 
     /** Scrape `<action>` entries and pair each with its enclosing component class. */
-    private fun filterActions(packageName: String, iconByClass: Map<String, Boolean>): List<ComponentItem> {
+    private fun filterActions(
+        packageName: String,
+        iconByClass: Map<String, Boolean>,
+        permByClass: Map<String, String?>,
+    ): List<ComponentItem> {
         val result = LinkedHashSet<ComponentItem>()
         walkManifest(packageName) { parser ->
             var currentClass: String? = null
@@ -172,9 +202,13 @@ class ManifestScanner(context: Context) {
                             val action = parser.androidName()
                             val cls = currentClass
                             if (!action.isNullOrEmpty() && cls != null) {
+                                // Inherit the declaring component's permission so its
+                                // protection-level icon shows on filter rows too.
+                                val perm = permByClass[cls]
                                 result += ComponentItem(
                                     packageName, cls, action, "filter", action,
                                     exported = true, hasIcon = iconByClass[cls] == true,
+                                    permission = perm, permissionLevel = Permissions.levelOf(pm, perm),
                                 )
                             }
                         }

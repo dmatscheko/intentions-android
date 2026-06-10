@@ -26,6 +26,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -42,6 +43,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import at.matscheko.intentions.core.Permissions
+import at.matscheko.intentions.core.ProtectionLevel
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
 import kotlinx.coroutines.Dispatchers
@@ -61,11 +64,24 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
     val uri = vm.contentUri
     var result by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
+    // Set when a query is denied, so we can offer a root-shell retry for that URI.
+    var shellRetryUri by remember { mutableStateOf<String?>(null) }
 
     fun runQuery() {
         loading = true
         scope.launch {
-            result = withContext(Dispatchers.IO) { query(context, uri) }
+            val r = withContext(Dispatchers.IO) { query(context, uri) }
+            result = r.text
+            shellRetryUri = r.shellRetryUri
+            loading = false
+        }
+    }
+
+    fun retryViaShell(target: String) {
+        loading = true
+        scope.launch {
+            result = withContext(Dispatchers.IO) { runViaRootShell(target) }
+            shellRetryUri = null
             loading = false
         }
     }
@@ -117,6 +133,13 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
 
             if (loading) CircularProgressIndicator()
 
+            // Offered after a denial: root may bypass a permission/SAF restriction.
+            shellRetryUri?.let { target ->
+                OutlinedButton(enabled = !loading, onClick = { retryViaShell(target) }) {
+                    Text("Run via root shell")
+                }
+            }
+
             if (result.isNotEmpty()) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     SelectionContainer {
@@ -135,9 +158,12 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
     }
 }
 
-private fun query(context: Context, uriString: String): String = try {
+/** A query outcome: text to show, plus a URI to offer a root-shell retry for (or null). */
+private data class QueryResult(val text: String, val shellRetryUri: String? = null)
+
+private fun query(context: Context, uriString: String): QueryResult = try {
     val uri = Uri.parse(uriString)
-    context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+    val text = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
         buildString {
             appendLine(c.columnNames.joinToString(" | "))
             appendLine("-".repeat(40))
@@ -157,8 +183,66 @@ private fun query(context: Context, uriString: String): String = try {
             }
         }
     } ?: "Query returned null — provider not found or access denied."
+    QueryResult(text)
+} catch (e: SecurityException) {
+    // Expected for providers locked to the system or the Storage Access Framework:
+    // they throw at acquire-time, so present a concise reason instead of a trace.
+    // A root shell may bypass the restriction, so offer that retry.
+    QueryResult(
+        securityDenialMessage(runCatching { Uri.parse(uriString) }.getOrNull(), e),
+        shellRetryUri = uriString,
+    )
+} catch (e: UnsupportedOperationException) {
+    // The provider exists but doesn't implement query() — common for providers that
+    // only expose call() / openFile() / insert(). A root shell can't help here.
+    QueryResult(
+        "This provider doesn't support querying.\n\n" +
+            (e.message?.trim()?.takeIf { it.isNotEmpty() }?.let { "$it\n\n" } ?: "") +
+            "Its query() isn't implemented, so there are no rows to list. It may only " +
+            "support other operations such as call(), insert(), getType() or openFile().",
+    )
 } catch (e: Exception) {
-    "Error: ${e.message}\n\n${e.stackTraceToString()}"
+    QueryResult("Error: ${e.message}\n\n${e.stackTraceToString()}")
+}
+
+/**
+ * Run `content query` through a root shell (`su`). This bypasses app-uid
+ * permission checks on rooted devices; on a stock device `su` is absent and we
+ * fall back to telling the user to run it from a computer over adb.
+ */
+private fun runViaRootShell(uriString: String): String = try {
+    val command = "content query --uri ${shellQuote(uriString)}"
+    val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
+    val output = process.inputStream.bufferedReader().use { it.readText() }
+    process.waitFor()
+    val body = output.trim().ifEmpty { "(no output)" }
+    "$ su -c $command\n\n$body"
+} catch (e: Exception) {
+    "Couldn't run via root shell: ${e.message}\n\n" +
+        "This needs root (su), which doesn't seem available. Run it from a computer instead:\n" +
+        "adb shell content query --uri $uriString"
+}
+
+/** Single-quote a token for a `su -c` shell command line. */
+private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
+
+/** Turn a provider [SecurityException] into a short, actionable explanation. */
+private fun securityDenialMessage(uri: Uri?, e: SecurityException): String {
+    val reason = e.message?.trim().orEmpty()
+    val guidance = when {
+        // Storage Access Framework providers can't be queried directly at all.
+        reason.contains("OPEN_DOCUMENT") || uri?.authority?.endsWith(".documents") == true ->
+            "This is a Storage Access Framework provider — it can only be read through the " +
+                "system document picker (ACTION_OPEN_DOCUMENT / OPEN_DOCUMENT_TREE), not a direct query."
+        // A named permission a normal app can't hold (signature/privileged).
+        Regex("android\\.permission\\.\\w+").find(reason) != null ->
+            "It requires a signature/privileged permission a normal app can't be granted. " +
+                "Read it from a privileged context instead, e.g. `adb shell content query --uri $uri`."
+        else ->
+            "This provider denies direct queries from a normal app. " +
+                "Try a privileged context, e.g. `adb shell content query --uri $uri`."
+    }
+    return "Access denied.\n\n$reason\n\n$guidance"
 }
 
 /** Media-read permissions appropriate to the running OS version. */
@@ -201,16 +285,8 @@ private fun isDeclared(context: Context, permission: String): Boolean = runCatch
 }.getOrDefault(false)
 
 /** True if [permission] is a runtime (dangerous) permission the user can grant on request. */
-private fun isDangerous(context: Context, permission: String): Boolean = runCatching {
-    val info = context.packageManager.getPermissionInfo(permission, 0)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        info.protection == android.content.pm.PermissionInfo.PROTECTION_DANGEROUS
-    } else {
-        @Suppress("DEPRECATION")
-        (info.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE) ==
-            android.content.pm.PermissionInfo.PROTECTION_DANGEROUS
-    }
-}.getOrDefault(false)
+private fun isDangerous(context: Context, permission: String): Boolean =
+    Permissions.levelOf(context.packageManager, permission) == ProtectionLevel.DANGEROUS
 
 /**
  * The missing permissions we can actually request for this URI: media perms for a

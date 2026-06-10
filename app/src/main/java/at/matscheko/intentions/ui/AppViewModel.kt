@@ -13,6 +13,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import at.matscheko.intentions.core.IntentCodec
 import at.matscheko.intentions.core.ManifestScanner
+import at.matscheko.intentions.core.ProtectionLevel
 import at.matscheko.intentions.core.ResourceBrowser
 import at.matscheko.intentions.data.Bookmark
 import at.matscheko.intentions.data.BookmarkDatabase
@@ -90,6 +91,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** The URI currently shown in the content-provider query screen (shared so the
         provider picker can set it). */
     var contentUri by mutableStateOf("content://user_dictionary/words")
+
+    // --- remembered search/filter UI state -----------------------------------
+    // Activity-scoped, so each search box and the provider filters keep their last
+    // value across navigation until the app process is terminated.
+
+    var appsQuery by mutableStateOf("")
+    var componentsQuery by mutableStateOf("")
+    var providersQuery by mutableStateOf("")
+    var resourcesQuery by mutableStateOf("")
+
+    var providerExportedOnly by mutableStateOf(false)
+    var providerLevels by mutableStateOf<Set<ProtectionLevel>>(emptySet())
+
+    private var dataQueries by mutableStateOf<Map<ManifestScanner.ScanKind, String>>(emptyMap())
+    fun dataQuery(kind: ManifestScanner.ScanKind): String = dataQueries[kind].orEmpty()
+    fun setDataQuery(kind: ManifestScanner.ScanKind, value: String) {
+        dataQueries = dataQueries + (kind to value)
+    }
 
     val defaultIcon: ImageBitmap by lazy { scanner.defaultIcon().toImageBitmap() }
 

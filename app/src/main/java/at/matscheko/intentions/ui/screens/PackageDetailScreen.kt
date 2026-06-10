@@ -41,13 +41,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import at.matscheko.intentions.core.IntentClipboard
 import at.matscheko.intentions.core.ManifestScanner
+import at.matscheko.intentions.core.ProtectionLevel
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.ui.AppViewModel
@@ -63,7 +63,7 @@ private sealed interface DetailRow {
 @Composable
 fun PackageDetailScreen(vm: AppViewModel, nav: NavController, packageName: String) {
     val context = LocalContext.current
-    var query by remember { mutableStateOf("") }
+    val query = vm.componentsQuery
     val refreshKey = remember { mutableIntStateOf(0) }
 
     val sections by produceState<List<ManifestScanner.ComponentSection>?>(
@@ -161,7 +161,7 @@ fun PackageDetailScreen(vm: AppViewModel, nav: NavController, packageName: Strin
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             OutlinedTextField(
                 value = query,
-                onValueChange = { query = it },
+                onValueChange = { vm.componentsQuery = it },
                 label = {
                     val count = sections?.sumOf { it.items.size }
                     Text("Search components" + (count?.let { " ($it)" } ?: ""))
@@ -246,12 +246,24 @@ private fun ComponentRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        // Protection level of the permission needed to use this component (omitted
+        // when none is required, to avoid an icon on every unprotected row).
+        if (item.permissionLevel != ProtectionLevel.NONE) {
+            val visual = protectionVisual(item.permissionLevel)
+            Icon(
+                visual.icon,
+                contentDescription = "Requires permission: ${visual.label}",
+                tint = visual.color,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+        }
         if (item.exported) {
             // The "accessible from other apps" symbol (old app's presence_online dot).
             Icon(
                 Icons.Filled.Public,
                 contentDescription = "Accessible from other apps",
-                tint = Color(0xFF2E7D32),
+                tint = ExportedTint,
                 modifier = Modifier.size(20.dp),
             )
         }

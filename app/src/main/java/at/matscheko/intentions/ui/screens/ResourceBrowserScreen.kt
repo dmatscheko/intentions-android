@@ -63,7 +63,7 @@ import at.matscheko.intentions.ui.Routes
 @Composable
 fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: String) {
     val context = LocalContext.current
-    var query by remember { mutableStateOf("") }
+    val query = vm.resourcesQuery
     var tab by remember { mutableIntStateOf(0) }
     var openText by remember { mutableStateOf<ResourceBrowser.ResEntry?>(null) }
 
@@ -113,7 +113,7 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
             }
             OutlinedTextField(
                 value = query,
-                onValueChange = { query = it },
+                onValueChange = { vm.resourcesQuery = it },
                 label = { Text("Search resources") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),

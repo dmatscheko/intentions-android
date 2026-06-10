@@ -42,7 +42,8 @@ import at.matscheko.intentions.ui.components.ListOverflowMenu
 @Composable
 fun DataBrowserScreen(vm: AppViewModel, nav: NavController, kind: ScanKind) {
     val context = LocalContext.current
-    var query by remember { mutableStateOf("") }
+    // Remembered per data kind so each list keeps its own last filter text.
+    val query = vm.dataQuery(kind)
     val refreshKey = remember { mutableIntStateOf(0) }
     val all by androidx.compose.runtime.produceState<List<String>?>(
         initialValue = null,
@@ -92,7 +93,7 @@ fun DataBrowserScreen(vm: AppViewModel, nav: NavController, kind: ScanKind) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     OutlinedTextField(
                         value = query,
-                        onValueChange = { query = it },
+                        onValueChange = { vm.setDataQuery(kind, it) },
                         label = { Text("Filter (${current.size})") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
