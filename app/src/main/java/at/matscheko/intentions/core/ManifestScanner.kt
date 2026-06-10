@@ -190,7 +190,7 @@ class ManifestScanner(context: Context) {
         permByClass: Map<String, String?>,
     ): List<ComponentItem> {
         val result = LinkedHashSet<ComponentItem>()
-        walkManifest(packageName) { parser ->
+        walkManifests(packageName) { parser ->
             var currentClass: String? = null
             var event = parser.eventType
             while (event != XmlPullParser.END_DOCUMENT) {
@@ -230,7 +230,7 @@ class ManifestScanner(context: Context) {
     fun collect(kind: ScanKind): List<String> {
         val result = sortedSetOf<String>()
         for (pkg in installedPackageNames()) {
-            walkManifest(pkg) { parser ->
+            walkManifests(pkg) { parser ->
                 var event = parser.eventType
                 while (event != XmlPullParser.END_DOCUMENT) {
                     if (event == XmlPullParser.START_TAG) {
@@ -260,12 +260,44 @@ class ManifestScanner(context: Context) {
     private fun installedPackageNames(): List<String> =
         pm.getInstalledPackages(0).map { it.packageName }.sorted()
 
-    private inline fun walkManifest(packageName: String, block: (XmlResourceParser) -> Unit) {
+    /**
+     * Invoke [block] on the parsed manifest of every APK that makes up the app —
+     * the base plus any config/feature splits. A split app is several APKs, each
+     * with its own AndroidManifest.xml; the components and intent filters live in
+     * the base, so reading just one (as a plain `openXmlResourceParser` does) misses
+     * them whenever the default cookie lands on a near-empty config split. We walk
+     * every asset cookie and keep the manifests whose root `package` matches this
+     * app (base + splits share it), skipping the framework / shared-library APKs the
+     * asset manager also holds.
+     */
+    private inline fun walkManifests(packageName: String, block: (XmlResourceParser) -> Unit) {
         runCatching {
             val assets = appContext.createPackageContext(packageName, 0).assets
-            assets.openXmlResourceParser("AndroidManifest.xml").use { parser ->
-                parser.next()
-                block(parser)
+            var cookie = 1
+            var consecutiveMisses = 0
+            // Cookies are assigned sequentially; stop once a few in a row have no manifest.
+            while (consecutiveMisses < 4) {
+                val parser = runCatching {
+                    assets.openXmlResourceParser(cookie, "AndroidManifest.xml")
+                }.getOrNull()
+                cookie++
+                if (parser == null) {
+                    consecutiveMisses++
+                    continue
+                }
+                consecutiveMisses = 0
+                parser.use { p ->
+                    var event = p.eventType
+                    while (event != XmlPullParser.START_TAG && event != XmlPullParser.END_DOCUMENT) {
+                        event = p.next()
+                    }
+                    val owner = if (event == XmlPullParser.START_TAG && p.name == "manifest") {
+                        p.getAttributeValue(null, "package")
+                    } else {
+                        null
+                    }
+                    if (owner == packageName) block(p)
+                }
             }
         }
     }
