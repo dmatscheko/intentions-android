@@ -22,8 +22,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowCircleUp
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.MoreVert
@@ -57,12 +55,12 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import at.matscheko.intentions.core.AmCommand
 import at.matscheko.intentions.core.IntentActions
-import at.matscheko.intentions.core.IntentClipboard
 import at.matscheko.intentions.core.ManifestScanner.ScanKind
 import at.matscheko.intentions.core.ShellRunner
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
+import at.matscheko.intentions.ui.components.CopyIntentButton
 import at.matscheko.intentions.ui.components.IntentCard
 import at.matscheko.intentions.ui.components.ShellRetryButton
 import kotlinx.coroutines.Dispatchers
@@ -108,14 +106,6 @@ fun MainScreen(
                     actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ),
                 actions = {
-                    IconButton(onClick = { IntentClipboard.copyIntent(context, vm.spec.toIntent()) }) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy intent")
-                    }
-                    IconButton(onClick = {
-                        IntentClipboard.pasteIntent(context)?.let { vm.loadIntent(it) }
-                    }) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = "Paste intent")
-                    }
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "More")
                     }
@@ -311,12 +301,10 @@ fun MainScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End,
                     ) {
-                        IconButton(onClick = {
-                            IntentClipboard.copyIntent(context, resultSpec.toIntent())
-                            toast(context, "Copied result intent")
-                        }) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy result to clipboard")
-                        }
+                        CopyIntentButton(
+                            intent = { resultSpec.toIntent() },
+                            contentDescription = "Copy result to clipboard",
+                        )
                         // The arrow-up promotes the result into the main intent.
                         IconButton(onClick = {
                             vm.replaceSpec(resultSpec)

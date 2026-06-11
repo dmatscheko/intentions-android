@@ -17,6 +17,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +43,7 @@ import at.matscheko.intentions.core.IntentClipboard
 import at.matscheko.intentions.core.IntentFlags
 import at.matscheko.intentions.core.IntentSuggestions
 import at.matscheko.intentions.model.ExtraType
+import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.core.Shortcuts
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.ui.AppViewModel
@@ -70,6 +72,29 @@ fun EditIntentScreen(vm: AppViewModel, nav: NavController, path: List<Int> = emp
                         Icon(Icons.Default.MoreVert, contentDescription = "More")
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        // Copy/paste act on the intent being edited *here* (this
+                        // nesting level and everything below it), not the root.
+                        DropdownMenuItem(text = { Text("Copy as Base64") }, onClick = {
+                            menuOpen = false
+                            IntentClipboard.copyIntent(context, spec.toIntent())
+                            toast(context, "Copied intent (Base64)")
+                        })
+                        DropdownMenuItem(text = { Text("Copy as intent URI") }, onClick = {
+                            menuOpen = false
+                            IntentClipboard.copyIntentAsUri(context, spec.toIntent())
+                            toast(context, "Copied intent URI")
+                        })
+                        DropdownMenuItem(text = { Text("Paste (replace this intent)") }, onClick = {
+                            menuOpen = false
+                            val pasted = IntentClipboard.pasteIntent(context)
+                            if (pasted != null) {
+                                vm.updateAt(path) { IntentSpec.from(pasted) }
+                                toast(context, "Pasted intent")
+                            } else {
+                                toast(context, "No intent on the clipboard")
+                            }
+                        })
+                        HorizontalDivider()
                         DropdownMenuItem(text = { Text("Copy as adb command") }, onClick = {
                             menuOpen = false
                             IntentClipboard.copyText(context, AmCommand.build(spec), "adb command")

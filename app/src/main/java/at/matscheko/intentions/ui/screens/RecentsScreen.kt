@@ -36,6 +36,7 @@ import at.matscheko.intentions.core.IntentCodec
 import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
+import at.matscheko.intentions.ui.components.CopyIntentButton
 import at.matscheko.intentions.ui.components.IntentCard
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -102,6 +103,7 @@ fun RecentsScreen(vm: AppViewModel, nav: NavController) {
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.weight(1f),
                                 )
+                                CopyIntentButton(intent = { spec.toIntent() }, contentDescription = "Copy")
                                 IconButton(onClick = { vm.deleteRecent(recent.id) }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete from history")
                                 }

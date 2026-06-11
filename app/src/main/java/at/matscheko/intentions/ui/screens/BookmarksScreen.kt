@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BookmarkAdd
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
@@ -33,21 +32,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import at.matscheko.intentions.core.IntentClipboard
 import at.matscheko.intentions.core.IntentCodec
 import at.matscheko.intentions.data.Bookmark
 import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
+import at.matscheko.intentions.ui.components.CopyIntentButton
 import at.matscheko.intentions.ui.components.IntentCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookmarksScreen(vm: AppViewModel, nav: NavController) {
-    val context = LocalContext.current
     val bookmarks by vm.bookmarks.collectAsState()
 
     // null = no dialog; Bookmark with id 0 = "add current"; otherwise "rename".
@@ -111,9 +108,7 @@ fun BookmarksScreen(vm: AppViewModel, nav: NavController) {
                                 },
                             )
                             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                                IconButton(onClick = {
-                                    IntentClipboard.copyText(context, bookmark.data, "intent")
-                                }) { Icon(Icons.Default.ContentCopy, contentDescription = "Copy") }
+                                CopyIntentButton(intent = { spec.toIntent() }, contentDescription = "Copy")
                                 IconButton(onClick = { editing = bookmark }) {
                                     Icon(Icons.Default.Edit, contentDescription = "Rename")
                                 }
