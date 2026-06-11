@@ -240,7 +240,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val key = "$pkg/${entry.id}"
         resourceThumbCache.get(key)?.let { return it }
         val bitmap = withContext(Dispatchers.IO) {
-            resourceBrowser.drawable(pkg, entry.id)?.toImageBitmap(96) ?: defaultIcon
+            // Floor the short side (max ~6:1) so thin line/divider drawables stay visible.
+            resourceBrowser.drawable(pkg, entry.id)?.toImageBitmap(96, minShortSide = 16) ?: defaultIcon
         }
         resourceThumbCache.put(key, bitmap)
         return bitmap
@@ -375,14 +376,19 @@ private fun android.graphics.drawable.Drawable.toImageBitmap(): ImageBitmap =
  * Rasterize preserving the drawable's aspect ratio, with its longer side scaled to
  * [maxPx] (so a wide/thin image stays wide/thin instead of being forced square).
  * Falls back to a [maxPx] square for drawables with no intrinsic size (e.g. colors).
+ *
+ * [minShortSide] floors the shorter side: for the grid thumbnail this keeps an extreme
+ * aspect ratio (thin lines/dividers) from collapsing to an invisible hairline, at the
+ * cost of slight distortion past that ratio. Defaults to no floor for a faithful view.
  */
-private fun android.graphics.drawable.Drawable.toImageBitmap(maxPx: Int): ImageBitmap {
+private fun android.graphics.drawable.Drawable.toImageBitmap(maxPx: Int, minShortSide: Int = 1): ImageBitmap {
     val w = intrinsicWidth
     val h = intrinsicHeight
+    val floor = minShortSide.coerceIn(1, maxPx)
     val (tw, th) = when {
         w <= 0 || h <= 0 -> maxPx to maxPx
-        w >= h -> maxPx to (maxPx * h / w).coerceAtLeast(1)
-        else -> (maxPx * w / h).coerceAtLeast(1) to maxPx
+        w >= h -> maxPx to (maxPx * h / w).coerceIn(floor, maxPx)
+        else -> (maxPx * w / h).coerceIn(floor, maxPx) to maxPx
     }
     return toBitmap(tw, th).asImageBitmap()
 }
