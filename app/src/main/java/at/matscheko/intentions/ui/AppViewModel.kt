@@ -2,6 +2,7 @@ package at.matscheko.intentions.ui
 
 import android.app.Application
 import android.content.Intent
+import android.graphics.Bitmap
 import android.util.LruCache
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -241,7 +242,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         resourceThumbCache.get(key)?.let { return it }
         val bitmap = withContext(Dispatchers.IO) {
             // Floor the short side (max ~6:1) so thin line/divider drawables stay visible.
-            resourceBrowser.drawable(pkg, entry.id)?.toImageBitmap(96, minShortSide = 16) ?: defaultIcon
+            resourceBrowser.drawable(pkg, entry.id)
+                ?.toImageBitmap(96, minShortSide = 16, tintIfBlank = BLANK_RESOURCE_TINT) ?: defaultIcon
         }
         resourceThumbCache.put(key, bitmap)
         return bitmap
@@ -266,7 +268,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun resourceImage(pkg: String, entry: ResourceBrowser.ResEntry): ResImage? =
         withContext(Dispatchers.IO) {
             resourceBrowser.drawable(pkg, entry.id)?.let { d ->
-                ResImage(d.toImageBitmap(512), d.intrinsicWidth, d.intrinsicHeight)
+                ResImage(
+                    d.toImageBitmap(512, tintIfBlank = BLANK_RESOURCE_TINT),
+                    d.intrinsicWidth,
+                    d.intrinsicHeight,
+                )
             }
         }
 
@@ -372,6 +378,9 @@ class ResImage(val bitmap: ImageBitmap, val srcWidth: Int, val srcHeight: Int)
 private fun android.graphics.drawable.Drawable.toImageBitmap(): ImageBitmap =
     toBitmap(96, 96).asImageBitmap()
 
+/** A default tint for drawables that render fully transparent (see [toImageBitmap]). */
+private const val BLANK_RESOURCE_TINT = 0xFF1976D2.toInt()
+
 /**
  * Rasterize preserving the drawable's aspect ratio, with its longer side scaled to
  * [maxPx] (so a wide/thin image stays wide/thin instead of being forced square).
@@ -380,8 +389,23 @@ private fun android.graphics.drawable.Drawable.toImageBitmap(): ImageBitmap =
  * [minShortSide] floors the shorter side: for the grid thumbnail this keeps an extreme
  * aspect ratio (thin lines/dividers) from collapsing to an invisible hairline, at the
  * cost of slight distortion past that ratio. Defaults to no floor for a faithful view.
+ *
+ * If the result is fully transparent and [tintIfBlank] is given, the drawable is
+ * re-rendered with that tint — revealing vectors that draw colorless because their tint
+ * is a theme attribute we can't resolve when loading another app's resources.
  */
-private fun android.graphics.drawable.Drawable.toImageBitmap(maxPx: Int, minShortSide: Int = 1): ImageBitmap {
+private fun android.graphics.drawable.Drawable.toImageBitmap(
+    maxPx: Int,
+    minShortSide: Int = 1,
+    tintIfBlank: Int? = null,
+): ImageBitmap {
+    val bitmap = rasterize(maxPx, minShortSide)
+    if (tintIfBlank == null || !bitmap.isFullyTransparent()) return bitmap.asImageBitmap()
+    val tinted = (constantState?.newDrawable()?.mutate() ?: this).also { it.setTint(tintIfBlank) }
+    return tinted.rasterize(maxPx, minShortSide).asImageBitmap()
+}
+
+private fun android.graphics.drawable.Drawable.rasterize(maxPx: Int, minShortSide: Int): Bitmap {
     val w = intrinsicWidth
     val h = intrinsicHeight
     val floor = minShortSide.coerceIn(1, maxPx)
@@ -390,5 +414,13 @@ private fun android.graphics.drawable.Drawable.toImageBitmap(maxPx: Int, minShor
         w >= h -> maxPx to (maxPx * h / w).coerceIn(floor, maxPx)
         else -> (maxPx * w / h).coerceIn(floor, maxPx) to maxPx
     }
-    return toBitmap(tw, th).asImageBitmap()
+    return toBitmap(tw, th)
+}
+
+/** Whether every pixel is fully transparent (alpha 0) — i.e. the drawable drew nothing. */
+private fun Bitmap.isFullyTransparent(): Boolean {
+    if (!hasAlpha()) return false
+    val pixels = IntArray(width * height)
+    getPixels(pixels, 0, width, 0, 0, width, height)
+    return pixels.none { it ushr 24 != 0 }
 }
