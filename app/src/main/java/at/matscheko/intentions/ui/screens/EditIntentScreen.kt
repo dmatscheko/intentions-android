@@ -33,6 +33,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,6 +52,7 @@ import at.matscheko.intentions.core.AmCommand
 import at.matscheko.intentions.core.IntentClipboard
 import at.matscheko.intentions.core.IntentFlags
 import at.matscheko.intentions.core.IntentSuggestions
+import at.matscheko.intentions.core.ResourceBrowser
 import at.matscheko.intentions.core.UriKind
 import at.matscheko.intentions.core.uriHint
 import at.matscheko.intentions.model.ExtraType
@@ -198,7 +200,9 @@ fun EditIntentScreen(vm: AppViewModel, nav: NavController, path: List<Int> = emp
                         )
                     }
                 }
-                DataUriHint(spec.dataUri)
+                DataUriHint(spec.dataUri, vm, nav) { mime ->
+                    vm.updateAt(path) { it.copy(mimeType = mime) }
+                }
             }
 
             Section("Categories", spec.hasCategories, { c -> vm.updateAt(path) { it.copy(hasCategories = c) } }) {
@@ -282,15 +286,37 @@ private fun TapToEdit(summary: String, onClick: () -> Unit) {
     }
 }
 
-/** One-line signpost classifying the data URI's scheme (readable vs launchable). */
+/**
+ * One-line signpost classifying the data URI's scheme (readable vs launchable). For data
+ * we have a tool for, it also offers a "View" action: `content://` opens the content-query
+ * screen, and `android.resource://` opens the image or text dialog (the image/text choice
+ * comes from the resource's own type, not the editor's MIME field, which can be wrong).
+ */
 @Composable
-private fun DataUriHint(uri: String) {
+private fun DataUriHint(
+    uri: String,
+    vm: AppViewModel,
+    nav: NavController,
+    onSetMimeType: (String) -> Unit,
+) {
+    val context = LocalContext.current
     val hint = remember(uri) { uriHint(uri) } ?: return
     val (icon, tint) = when (hint.kind) {
         UriKind.READABLE -> Icons.Filled.Description to Color(0xFF2E7D32)
         UriKind.LAUNCHABLE -> Icons.AutoMirrored.Filled.OpenInNew to ExportedTint
         UriKind.UNKNOWN -> Icons.AutoMirrored.Filled.Help to MaterialTheme.colorScheme.onSurfaceVariant
     }
+
+    val trimmed = uri.trim()
+    val isContent = remember(trimmed) { trimmed.startsWith("content://", ignoreCase = true) }
+    // For an android.resource:// URI, resolve it so we know it's viewable (and image vs text).
+    val resolved by produceState<ResourceBrowser.Resolved?>(null, trimmed) {
+        value = if (trimmed.startsWith("android.resource:", ignoreCase = true)) {
+            vm.resolveResource(trimmed)
+        } else null
+    }
+    var viewResource by remember { mutableStateOf<ResourceBrowser.Resolved?>(null) }
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
@@ -298,7 +324,35 @@ private fun DataUriHint(uri: String) {
             hint.text,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
         )
+        when {
+            isContent -> TextButton(onClick = {
+                vm.contentUri = trimmed
+                nav.navigate(Routes.CONTENT_QUERY)
+            }) { Text("View") }
+            resolved != null -> TextButton(onClick = { viewResource = resolved }) { Text("View") }
+        }
+    }
+
+    viewResource?.let { r ->
+        val onDismiss = { viewResource = null }
+        val onUseMime: (String) -> Unit = { mime ->
+            onSetMimeType(mime)
+            toast(context, "Set MIME type")
+            viewResource = null
+        }
+        if (r.entry.category == ResourceBrowser.Category.IMAGE) {
+            ImageResourceDialog(
+                vm, r.pkg, r.entry, trimmed, onDismiss,
+                onUseUri = {}, showUseAsData = false, onUseMime = onUseMime,
+            )
+        } else {
+            TextResourceDialog(
+                vm, r.pkg, r.entry, trimmed, onDismiss,
+                onUseUri = {}, showUseAsData = false, onUseMime = onUseMime,
+            )
+        }
     }
 }
 

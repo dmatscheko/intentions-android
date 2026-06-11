@@ -5,7 +5,9 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.res.Resources
 import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.util.TypedValue
+import android.webkit.MimeTypeMap
 import androidx.core.content.res.ResourcesCompat
 import java.io.InputStream
 import java.util.zip.ZipFile
@@ -50,6 +52,14 @@ class ResourceBrowser(context: Context) {
     ) {
         /** True when resource-name obfuscation stripped the real name (see [OBFUSCATED_NAME]). */
         val isObfuscated: Boolean get() = name == OBFUSCATED_NAME
+
+        /** Best-effort MIME type from the file extension (e.g. image/png, text/xml), or null. */
+        val mimeType: String?
+            get() {
+                val ext = path?.substringAfterLast('.', "")?.lowercase().orEmpty()
+                if (ext.isEmpty()) return null
+                return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+            }
 
         /**
          * Label to show the user: the real entry name, or — when the app was built
@@ -121,6 +131,36 @@ class ResourceBrowser(context: Context) {
     fun drawable(pkg: String, id: Int): Drawable? {
         val res = resources(pkg) ?: return null
         return runCatching { ResourcesCompat.getDrawable(res, id, null) }.getOrNull()
+    }
+
+    /** A resource URI resolved to its owning package and entry, for the detail dialogs. */
+    data class Resolved(val pkg: String, val entry: ResEntry)
+
+    /**
+     * Resolve an `android.resource://pkg/...` URI — either `…/type/name` or `…/<id>` —
+     * to its package and a [ResEntry] so it can be shown in the image/text dialog.
+     * The category comes from the resource's own type (not any caller-supplied MIME).
+     * Returns null if the scheme, package or resource can't be resolved.
+     */
+    fun resolve(uriString: String): Resolved? {
+        val uri = runCatching { Uri.parse(uriString.trim()) }.getOrNull() ?: return null
+        if (!"android.resource".equals(uri.scheme, ignoreCase = true)) return null
+        val pkg = uri.authority ?: return null
+        val res = resources(pkg) ?: return null
+        val segments = uri.pathSegments
+        val id = when (segments.size) {
+            1 -> segments[0].toIntOrNull() ?: res.getIdentifier(segments[0], null, pkg)
+            2 -> res.getIdentifier(segments[1], segments[0], pkg)
+            else -> 0
+        }
+        if (id == 0) return null
+        val type = runCatching { res.getResourceTypeName(id) }.getOrNull()?.lowercase() ?: return null
+        val name = runCatching { res.getResourceEntryName(id) }.getOrNull() ?: return null
+        val resolvable = runCatching { res.getIdentifier(name, type, pkg) }.getOrDefault(0) == id
+        val tv = TypedValue()
+        val path = runCatching { res.getValue(id, tv, true); tv.string?.toString() }
+            .getOrNull()?.takeIf { it.startsWith("res/") }
+        return Resolved(pkg, ResEntry(type, name, id, categoryOf(type), resolvable, path))
     }
 
     /**

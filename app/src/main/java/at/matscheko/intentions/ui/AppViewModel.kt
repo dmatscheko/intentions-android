@@ -252,6 +252,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun resourceText(pkg: String, entry: ResourceBrowser.ResEntry): String? =
         withContext(Dispatchers.IO) { resourceBrowser.text(pkg, entry) }
 
+    /** Resolve an `android.resource://` data URI to its package + entry, or null. */
+    suspend fun resolveResource(uri: String): ResourceBrowser.Resolved? =
+        withContext(Dispatchers.IO) { resourceBrowser.resolve(uri) }
+
     /**
      * Ids of the given image [entries] whose drawable can't be decoded — these
      * render only the fallback icon. Backs the Images tab's "Displayable" filter.

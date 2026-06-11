@@ -352,6 +352,7 @@ private fun ResourceMeta(entry: ResourceBrowser.ResEntry) {
         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
             ResourceMetaRow("Name", entry.name)
             entry.path?.let { ResourceMetaRow("Path", it) }
+            entry.mimeType?.let { ResourceMetaRow("MIME", it) }
             ResourceMetaRow("ID", entry.id.toString())
         }
     }
@@ -376,13 +377,15 @@ private fun ResourceMetaRow(label: String, value: String) {
 }
 
 @Composable
-private fun ImageResourceDialog(
+internal fun ImageResourceDialog(
     vm: AppViewModel,
     packageName: String,
     entry: ResourceBrowser.ResEntry,
     uri: String,
     onDismiss: () -> Unit,
     onUseUri: (String) -> Unit,
+    showUseAsData: Boolean = true,
+    onUseMime: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // Loading and decode-failure both surface as a null image, so track them apart:
@@ -453,7 +456,14 @@ private fun ImageResourceDialog(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    TextButton(onClick = { onUseUri(uri) }) { Text("Use as data URI") }
+                    if (showUseAsData) {
+                        TextButton(onClick = { onUseUri(uri) }) { Text("Use as data URI") }
+                    }
+                    entry.mimeType?.let { mime ->
+                        if (onUseMime != null) {
+                            TextButton(onClick = { onUseMime(mime) }) { Text("Use MIME type") }
+                        }
+                    }
                     TextButton(onClick = onDismiss) { Text("Close") }
                 }
             }
@@ -462,13 +472,15 @@ private fun ImageResourceDialog(
 }
 
 @Composable
-private fun TextResourceDialog(
+internal fun TextResourceDialog(
     vm: AppViewModel,
     packageName: String,
     entry: ResourceBrowser.ResEntry,
     uri: String,
     onDismiss: () -> Unit,
     onUseUri: (String) -> Unit,
+    showUseAsData: Boolean = true,
+    onUseMime: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var copyMenuOpen by remember { mutableStateOf(false) }
@@ -533,8 +545,13 @@ private fun TextResourceDialog(
                     horizontalArrangement = Arrangement.End,
                 ) {
                     // The manifest is a synthetic entry, not a real resource URI.
-                    if (entry.id != 0) {
+                    if (showUseAsData && entry.id != 0) {
                         TextButton(onClick = { onUseUri(uri) }) { Text("Use as data URI") }
+                    }
+                    entry.mimeType?.let { mime ->
+                        if (onUseMime != null) {
+                            TextButton(onClick = { onUseMime(mime) }) { Text("Use MIME type") }
+                        }
                     }
                     TextButton(onClick = onDismiss) { Text("Close") }
                 }
