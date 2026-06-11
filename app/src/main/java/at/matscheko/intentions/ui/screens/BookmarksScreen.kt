@@ -19,10 +19,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.navigation.NavController
 import at.matscheko.intentions.core.IntentCodec
+import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.data.Bookmark
 import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.ui.AppViewModel
@@ -38,6 +40,17 @@ fun BookmarksScreen(vm: AppViewModel, nav: NavController) {
     var editing by remember { mutableStateOf<Bookmark?>(null) }
     val listState = rememberLazyListState()
     val dateFormat = remember { SimpleDateFormat("MMM d, HH:mm:ss", Locale.getDefault()) }
+    val context = LocalContext.current
+    // Set when the user taps add; the next bookmark list update scrolls to the top so
+    // the freshly-saved item (inserted at the head, id DESC) comes into view.
+    var scrollToTopOnAdd by remember { mutableStateOf(false) }
+
+    LaunchedEffect(bookmarks) {
+        if (scrollToTopOnAdd) {
+            scrollToTopOnAdd = false
+            listState.animateScrollToItem(0)
+        }
+    }
 
     // Decode each bookmark's stored intent once; the title is the (editable) name.
     val decoded = remember(bookmarks) {
@@ -67,6 +80,8 @@ fun BookmarksScreen(vm: AppViewModel, nav: NavController) {
                     dateFormat.format(System.currentTimeMillis()),
                     IntentCodec.encode(vm.spec.toIntent()),
                 )
+                scrollToTopOnAdd = true
+                toast(context, "Bookmark saved")
             }) {
                 Icon(Icons.Default.BookmarkAdd, contentDescription = "Add current intent")
             }
@@ -82,7 +97,10 @@ fun BookmarksScreen(vm: AppViewModel, nav: NavController) {
                 vm.replaceSpec(spec)
                 nav.popBackStack(Routes.MAIN, inclusive = false)
             },
-            onDelete = { vm.deleteBookmark(bm.id) },
+            onDelete = {
+                vm.deleteBookmark(bm.id)
+                toast(context, "Bookmarked intent deleted")
+            },
             onEdit = { editing = bm },
         )
     }

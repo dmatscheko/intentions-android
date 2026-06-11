@@ -6,10 +6,6 @@ import android.content.Intent
  * Marshals an [Intent] to/from the standard Android *intent URI* form, e.g.
  * `intent://scan/#Intent;scheme=zxing;package=com.google.zxing.client.android;end`.
  *
- * This wraps the platform's own [Intent.toUri] / [Intent.parseUri] (the parser
- * the user pasted into `temp/parse_uri.java` is exactly that platform code), so
- * we never hand-roll the grammar.
- *
  * Unlike [IntentCodec] — an opaque Base64 [android.os.Parcel] — this form is
  * human-readable and interoperable with launchers, browsers and other apps. The
  * trade-off is that it is lossy: [Intent.toUri] only emits the scalar extra

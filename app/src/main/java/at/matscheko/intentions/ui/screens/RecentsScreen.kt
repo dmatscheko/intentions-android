@@ -14,8 +14,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavController
 import at.matscheko.intentions.core.IntentCodec
+import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
@@ -28,6 +30,7 @@ fun RecentsScreen(vm: AppViewModel, nav: NavController) {
     val recents by vm.recents.collectAsState()
     val filters = vm.recentFilters
     val listState = rememberLazyListState()
+    val context = LocalContext.current
     val dateFormat = remember { SimpleDateFormat("MMM d, HH:mm:ss", Locale.getDefault()) }
 
     // Decode each history entry's stored intent once; the title is its timestamp.
@@ -75,7 +78,10 @@ fun RecentsScreen(vm: AppViewModel, nav: NavController) {
                 vm.replaceSpec(spec)
                 nav.popBackStack(Routes.MAIN, inclusive = false)
             },
-            onDelete = { vm.deleteRecent(rec.id) },
+            onDelete = {
+                vm.deleteRecent(rec.id)
+                toast(context, "Recent intent deleted")
+            },
         )
     }
 }
