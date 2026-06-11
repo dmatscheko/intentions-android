@@ -117,6 +117,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var providerExportedOnly by mutableStateOf(false)
     var providerLevels by mutableStateOf<Set<ProtectionLevel>>(emptySet())
 
+    // Package-explorer app-list filters (show only apps with the attribute).
+    var appSystemOnly by mutableStateOf(false)
+    var appDisabledOnly by mutableStateOf(false)
+
+    // Component-list filters (exported + which protection levels to include).
+    var componentExportedOnly by mutableStateOf(false)
+    var componentLevels by mutableStateOf<Set<ProtectionLevel>>(emptySet())
+
     private var dataQueries by mutableStateOf<Map<ManifestScanner.ScanKind, String>>(emptyMap())
     fun dataQuery(kind: ManifestScanner.ScanKind): String = dataQueries[kind].orEmpty()
     fun setDataQuery(kind: ManifestScanner.ScanKind, value: String) {

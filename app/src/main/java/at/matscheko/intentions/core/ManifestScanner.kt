@@ -3,6 +3,7 @@ package at.matscheko.intentions.core
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
 import android.content.pm.ComponentInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageItemInfo
@@ -26,7 +27,15 @@ class ManifestScanner(context: Context) {
     private val appContext = context.applicationContext
     private val pm: PackageManager = appContext.packageManager
 
-    data class AppEntry(val packageName: String, val label: String, val hasIcon: Boolean = true)
+    data class AppEntry(
+        val packageName: String,
+        val label: String,
+        val hasIcon: Boolean = true,
+        /** Part of the system image (or an update to one), vs. user-installed. */
+        val isSystem: Boolean = false,
+        /** False when the whole app is disabled (by the user or the system). */
+        val enabled: Boolean = true,
+    )
 
     data class ComponentItem(
         val packageName: String,
@@ -64,12 +73,22 @@ class ManifestScanner(context: Context) {
     // --- Package explorer ----------------------------------------------------
 
     fun installedApps(): List<AppEntry> =
-        pm.getInstalledPackages(0)
+        // MATCH_DISABLED_COMPONENTS so user/system-disabled apps still show up
+        // (otherwise they'd silently vanish, making the "Disabled" filter useless).
+        pm.getInstalledPackages(PackageManager.MATCH_DISABLED_COMPONENTS)
             .map { info ->
                 val appInfo = info.applicationInfo
                 val label = runCatching { pm.getApplicationLabel(appInfo!!).toString() }
                     .getOrDefault(info.packageName)
-                AppEntry(info.packageName, label, hasIcon = (appInfo?.icon ?: 0) != 0)
+                val flags = appInfo?.flags ?: 0
+                val isSystem = (flags and
+                    (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
+                AppEntry(
+                    info.packageName, label,
+                    hasIcon = (appInfo?.icon ?: 0) != 0,
+                    isSystem = isSystem,
+                    enabled = appInfo?.enabled ?: true,
+                )
             }
             .sortedWith(compareBy({ it.label.lowercase() }, { it.packageName }))
 
