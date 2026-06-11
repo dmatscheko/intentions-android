@@ -5,12 +5,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -35,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -42,6 +49,8 @@ import at.matscheko.intentions.core.AmCommand
 import at.matscheko.intentions.core.IntentClipboard
 import at.matscheko.intentions.core.IntentFlags
 import at.matscheko.intentions.core.IntentSuggestions
+import at.matscheko.intentions.core.UriKind
+import at.matscheko.intentions.core.uriHint
 import at.matscheko.intentions.model.ExtraType
 import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.core.Shortcuts
@@ -187,6 +196,7 @@ fun EditIntentScreen(vm: AppViewModel, nav: NavController, path: List<Int> = emp
                         )
                     }
                 }
+                DataUriHint(spec.dataUri)
             }
 
             Section("Categories", spec.hasCategories, { c -> vm.updateAt(path) { it.copy(hasCategories = c) } }) {
@@ -249,6 +259,26 @@ fun EditIntentScreen(vm: AppViewModel, nav: NavController, path: List<Int> = emp
                 }
             }
         }
+    }
+}
+
+/** One-line signpost classifying the data URI's scheme (readable vs launchable). */
+@Composable
+private fun DataUriHint(uri: String) {
+    val hint = remember(uri) { uriHint(uri) } ?: return
+    val (icon, tint) = when (hint.kind) {
+        UriKind.READABLE -> Icons.Filled.Description to Color(0xFF2E7D32)
+        UriKind.LAUNCHABLE -> Icons.AutoMirrored.Filled.OpenInNew to ExportedTint
+        UriKind.UNKNOWN -> Icons.AutoMirrored.Filled.Help to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            hint.text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
