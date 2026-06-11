@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -33,8 +34,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -62,7 +71,10 @@ fun <T> EntityListScaffold(
     onBack: () -> Unit,
     searchValue: String,
     onSearchChange: (String) -> Unit,
+    /** Search-field label without the count, e.g. "Search apps". */
     searchLabel: String,
+    /** Entry count shown on the search chip / in the field label. */
+    count: Int?,
     /** null = still loading; empty = show [emptyText]; else the rows. */
     items: List<T>?,
     itemKey: (index: Int, item: T) -> Any,
@@ -86,13 +98,13 @@ fun <T> EntityListScaffold(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            SearchField(
-                value = searchValue,
-                onValueChange = onSearchChange,
-                label = searchLabel,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            SearchChipBar(
+                searchValue = searchValue,
+                onSearchChange = onSearchChange,
+                baseLabel = searchLabel,
+                count = count,
+                filters = filters,
             )
-            FilterChipRow(content = filters)
             when {
                 items == null -> CircularProgressIndicator(modifier = Modifier.padding(16.dp))
                 items.isEmpty() -> Text(emptyText, modifier = Modifier.padding(16.dp))
@@ -161,14 +173,74 @@ fun RowScope.SymbolIcon(icon: ImageVector, contentDescription: String, tint: Col
 
 /** A horizontally-scrolling row of filter chips, with the list screens' padding. */
 @Composable
-fun FilterChipRow(content: @Composable RowScope.() -> Unit) {
+fun FilterChipRow(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         content = content,
     )
+}
+
+/**
+ * Search field that, while empty and unfocused, collapses into a leading "🔍 N"
+ * chip ahead of the [filters] to save the row of vertical space the full field
+ * takes. Tapping the chip expands and focuses the field; blurring it while empty
+ * collapses it again. A non-empty query keeps the field shown.
+ *
+ * [count] is the number of entries to show on the chip and in the field's label.
+ */
+@Composable
+fun SearchChipBar(
+    searchValue: String,
+    onSearchChange: (String) -> Unit,
+    baseLabel: String,
+    count: Int?,
+    filters: @Composable RowScope.() -> Unit,
+) {
+    var expanded by remember { mutableStateOf(searchValue.isNotEmpty()) }
+    val focusRequester = remember { FocusRequester() }
+    var hadFocus by remember { mutableStateOf(false) }
+
+    if (expanded) {
+        SearchField(
+            value = searchValue,
+            onValueChange = onSearchChange,
+            label = baseLabel + (count?.let { " ($it)" } ?: ""),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .focusRequester(focusRequester)
+                .onFocusChanged { focus ->
+                    if (focus.isFocused) {
+                        hadFocus = true
+                    } else if (hadFocus && searchValue.isEmpty()) {
+                        // Lost focus with nothing typed -> fold back into the chip.
+                        expanded = false
+                        hadFocus = false
+                    }
+                },
+        )
+        LaunchedEffect(Unit) {
+            // Only grab focus when opened empty (i.e. via the chip). A persisted
+            // query expands the field without stealing focus / popping the keyboard.
+            if (searchValue.isEmpty()) focusRequester.requestFocus()
+        }
+        FilterChipRow(content = filters)
+    } else {
+        FilterChipRow(modifier = Modifier.padding(vertical = 8.dp)) {
+            FilterChip(
+                selected = false,
+                onClick = { expanded = true },
+                label = { Text(count?.toString() ?: "") },
+                leadingIcon = {
+                    Icon(Icons.Filled.Search, contentDescription = "Search", modifier = Modifier.size(18.dp))
+                },
+            )
+            filters()
+        }
+    }
 }
 
 /**

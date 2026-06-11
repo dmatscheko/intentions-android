@@ -120,8 +120,8 @@ fun PackageDetailScreen(vm: AppViewModel, nav: NavController, packageName: Strin
         onBack = { nav.popBackStack() },
         searchValue = query,
         onSearchChange = { vm.componentsQuery = it },
-        searchLabel = "Search components" +
-            ((sections?.sumOf { it.items.size })?.let { " ($it)" } ?: ""),
+        searchLabel = "Search components",
+        count = sections?.sumOf { it.items.size },
         // null while the (slow) scan runs; rows otherwise (possibly empty = filtered out).
         items = if (sections == null) null else rows,
         itemKey = { index, row ->

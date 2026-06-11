@@ -59,8 +59,7 @@ import at.matscheko.intentions.core.accepts
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
-import at.matscheko.intentions.ui.components.FilterChipRow
-import at.matscheko.intentions.ui.components.SearchField
+import at.matscheko.intentions.ui.components.SearchChipBar
 import at.matscheko.intentions.ui.components.TriStateFilterChip
 import at.matscheko.intentions.ui.components.rememberXmlHighlighted
 
@@ -121,14 +120,13 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
                     text = { Text("Text / XML" + (texts?.let { " (${it.size})" } ?: "")) },
                 )
             }
-            SearchField(
-                value = query,
-                onValueChange = { vm.resourcesQuery = it },
+            SearchChipBar(
+                searchValue = query,
+                onSearchChange = { vm.resourcesQuery = it },
+                baseLabel = "Search resources",
                 // Count reflects what's currently listed (after the type chips + search).
-                label = "Search resources" + (shown?.let { " (${it.size})" } ?: ""),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            FilterChipRow {
+                count = shown?.size,
+            ) {
                 availableTypes.forEach { type ->
                     val state = typeMap[type] ?: FilterState.IGNORE
                     TriStateFilterChip(
