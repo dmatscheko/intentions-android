@@ -51,11 +51,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
@@ -248,11 +253,12 @@ private fun ImageGrid(
                 ) {
                     // Fixed 64dp box keeps every cell the same size; Fit scales the
                     // bitmap into it preserving aspect ratio (centered, letterboxed).
+                    // The checkerboard keeps white/transparent icons visible.
                     Image(
                         bitmap = thumb,
                         contentDescription = entry.displayName,
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier.size(64.dp),
+                        modifier = Modifier.size(64.dp).checkerboard(),
                     )
                     Text(
                         entry.displayName,
@@ -304,6 +310,35 @@ private fun TextList(
                 }
             }
         }
+    }
+}
+
+/**
+ * Paints a checkerboard behind the content so otherwise-invisible images stay visible:
+ * white/tint-only icons show against the dark squares, dark ones against the light
+ * squares, and transparency reads as the pattern. Many app drawables are white icons
+ * meant to be tinted at runtime and would vanish on a plain background.
+ */
+private fun Modifier.checkerboard(
+    cell: Dp = 8.dp,
+    light: Color = Color(0xFFC8C8C8),
+    dark: Color = Color(0xFF707070),
+): Modifier = drawBehind {
+    val c = cell.toPx()
+    var row = 0
+    var y = 0f
+    while (y < size.height) {
+        var col = 0
+        var x = 0f
+        while (x < size.width) {
+            drawRect(
+                color = if ((row + col) % 2 == 0) light else dark,
+                topLeft = Offset(x, y),
+                size = Size(c, c),
+            )
+            x += c; col++
+        }
+        y += c; row++
     }
 }
 
@@ -403,7 +438,7 @@ private fun ImageResourceDialog(
                                 bitmap = img.bitmap,
                                 contentDescription = entry.displayName,
                                 contentScale = ContentScale.Fit,
-                                modifier = imageModifier,
+                                modifier = imageModifier.checkerboard(),
                             )
                         }
                         !loaded -> CircularProgressIndicator()
