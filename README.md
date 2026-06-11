@@ -19,6 +19,12 @@ The app is largely a reconstruction of the Intentions app from 2012, whose code 
 
 ## Features
 
+### Screenshots
+
+| Main screen | Package explorer | App components | Intent editor | Content provider | Resource browser |
+| --- | --- | --- | --- | --- | --- |
+| <a href="docs/screenshots/main.jpg"><img src="docs/screenshots/main.jpg" alt="Main screen, intent preview and launcher screenshot" width="120"></a> | <a href="docs/screenshots/package_explorer.jpg"><img src="docs/screenshots/package_explorer.jpg" alt="Package explorer apps list screenshot" width="120"></a> | <a href="docs/screenshots/package_explorer_components.jpg"><img src="docs/screenshots/package_explorer_components.jpg" alt="Package explorer app components list screenshot" width="120"></a> | <a href="docs/screenshots/intent_editor.jpg"><img src="docs/screenshots/intent_editor.jpg" alt="Intent editor screenshot" width="120"></a> | <a href="docs/screenshots/content_provider_query.jpg"><img src="docs/screenshots/content_provider_query.jpg" alt="Content provider query screenshot" width="120"></a> | <a href="docs/screenshots/resource_browser_images.jpg"><img src="docs/screenshots/resource_browser_images.jpg" alt="Resource browser screenshot" width="120"></a> |
+
 ### Build an intent
 - **Intent editor** — set the component, action, data URI + MIME type, categories, extras
   and flags. Sections toggle on and off without losing what you've typed.
