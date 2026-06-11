@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -49,7 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -64,6 +65,7 @@ import at.matscheko.intentions.core.ResourceBrowser
 import at.matscheko.intentions.core.accepts
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.ui.AppViewModel
+import at.matscheko.intentions.ui.ResImage
 import at.matscheko.intentions.ui.Routes
 import at.matscheko.intentions.ui.components.SearchChipBar
 import at.matscheko.intentions.ui.components.TriStateFilterChip
@@ -348,10 +350,12 @@ private fun ImageResourceDialog(
     onUseUri: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    // Loading and decode-failure both surface as a null bitmap, so track them apart:
+    // Loading and decode-failure both surface as a null image, so track them apart:
     // `loaded` flips true once decoding has run, distinguishing the two for the UI.
     var loaded by remember(entry) { mutableStateOf(false) }
-    val image by produceState<ImageBitmap?>(initialValue = null, entry) {
+    // Tapping the image area toggles between zoom-to-fit (default) and original scale.
+    var fitToArea by remember(entry) { mutableStateOf(true) }
+    val image by produceState<ResImage?>(initialValue = null, entry) {
         value = vm.resourceImage(packageName, entry)
         loaded = true
     }
@@ -377,17 +381,31 @@ private fun ImageResourceDialog(
                 ResourceMeta(entry)
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 Box(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 360.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(280.dp)
+                        .clipToBounds()
+                        .clickable { fitToArea = !fitToArea },
                     contentAlignment = Alignment.Center,
                 ) {
-                    val bitmap = image
+                    val img = image
                     when {
-                        bitmap != null -> Image(
-                            bitmap = bitmap,
-                            contentDescription = entry.displayName,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                        img != null -> {
+                            val hasSize = img.srcWidth > 0 && img.srcHeight > 0
+                            // Fit: scale into the whole area (aspect kept). Original: the
+                            // drawable's intrinsic size, centered (clipped if larger).
+                            val imageModifier = if (fitToArea || !hasSize) {
+                                Modifier.fillMaxSize()
+                            } else {
+                                Modifier.size(img.srcWidth.dp, img.srcHeight.dp)
+                            }
+                            Image(
+                                bitmap = img.bitmap,
+                                contentDescription = entry.displayName,
+                                contentScale = ContentScale.Fit,
+                                modifier = imageModifier,
+                            )
+                        }
                         !loaded -> CircularProgressIndicator()
                         else -> Text(
                             "(could not decode this image)",

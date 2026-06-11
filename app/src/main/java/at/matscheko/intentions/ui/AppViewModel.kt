@@ -258,9 +258,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             buildSet { for (e in entries) if (resourceBrowser.drawable(pkg, e.id) == null) add(e.id) }
         }
 
-    /** Full-size bitmap for the image-detail dialog (null if it can't be decoded). */
-    suspend fun resourceImage(pkg: String, entry: ResourceBrowser.ResEntry): ImageBitmap? =
-        withContext(Dispatchers.IO) { resourceBrowser.drawable(pkg, entry.id)?.toImageBitmap(512) }
+    /**
+     * Decoded image for the detail dialog: a crisp bitmap plus the drawable's intrinsic
+     * size (for the fit / original-scale toggle). Null if the drawable can't be decoded.
+     */
+    suspend fun resourceImage(pkg: String, entry: ResourceBrowser.ResEntry): ResImage? =
+        withContext(Dispatchers.IO) {
+            resourceBrowser.drawable(pkg, entry.id)?.let { d ->
+                ResImage(d.toImageBitmap(512), d.intrinsicWidth, d.intrinsicHeight)
+            }
+        }
 
     // --- intent editing ------------------------------------------------------
 
@@ -353,6 +360,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearRecents() = viewModelScope.launch { recentDao.clear() }
 }
+
+/**
+ * A decoded resource image: a crisp [bitmap] for display, plus the drawable's intrinsic
+ * pixel size ([srcWidth]/[srcHeight], ≤ 0 if unknown) so the dialog can show it at
+ * original scale as well as zoomed-to-fit.
+ */
+class ResImage(val bitmap: ImageBitmap, val srcWidth: Int, val srcHeight: Int)
 
 private fun android.graphics.drawable.Drawable.toImageBitmap(): ImageBitmap =
     toBitmap(96, 96).asImageBitmap()
