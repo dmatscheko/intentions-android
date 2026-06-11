@@ -39,6 +39,14 @@ class ResourceBrowser(context: Context) {
         val name: String,
         val id: Int,
         val category: Category,
+        /**
+         * Whether `android.resource://pkg/type/[name]` resolves to this id — i.e. the
+         * name is usable in a URI. False when the name was recovered from the file path
+         * but stripped from the lookup table (so only the numeric-id URI form works).
+         */
+        val resolvable: Boolean = false,
+        /** The resource's file path within the APK, when known (null for synthetic entries). */
+        val path: String? = null,
     ) {
         /** True when resource-name obfuscation stripped the real name (see [OBFUSCATED_NAME]). */
         val isObfuscated: Boolean get() = name == OBFUSCATED_NAME
@@ -74,26 +82,33 @@ class ResourceBrowser(context: Context) {
             appInfo.sourceDir?.let { add(it) }
             appInfo.splitSourceDirs?.let { addAll(it) }
         }
-        val byPath = LinkedHashSet<Pair<String, String>>()
+        // (type, name) -> first APK path seen for it (kept to show in the detail view).
+        val byPath = LinkedHashMap<Pair<String, String>, String>()
         for (apk in apks) {
             runCatching {
                 ZipFile(apk).use { zip ->
                     val entries = zip.entries()
                     while (entries.hasMoreElements()) {
-                        val match = ENTRY.matchEntire(entries.nextElement().name) ?: continue
-                        byPath.add(match.groupValues[1].lowercase() to match.groupValues[2])
+                        val path = entries.nextElement().name
+                        val match = ENTRY.matchEntire(path) ?: continue
+                        byPath.putIfAbsent(match.groupValues[1].lowercase() to match.groupValues[2], path)
                     }
                 }
             }
         }
-        for ((type, name) in byPath) {
+        for ((typeName, path) in byPath) {
+            val (type, name) = typeName
             val id = res.getIdentifier(name, type, pkg)
-            if (id != 0) byId.putIfAbsent(id, ResEntry(type, name, id, categoryOf(type)))
+            // getIdentifier succeeded, so this type/name is usable in a URI.
+            if (id != 0) {
+                byId.putIfAbsent(id, ResEntry(type, name, id, categoryOf(type), resolvable = true, path = path))
+            }
         }
 
-        // 2. Resource-table sweep: recovers file resources whose APK paths were
-        //    flattened/obfuscated, reading their real names from the resource table.
-        enumerateFileResources(res, packageId(appInfo), byId)
+        // 2. Resource-table sweep: recovers file resources the zip walk missed
+        //    (flattened APK paths) and, crucially, names that getIdentifier couldn't
+        //    map back to an id — reading each name from the table, or its kept path.
+        enumerateFileResources(res, pkg, packageId(appInfo), byId)
 
         val entries = (byId.values + manifestEntry())
             .sortedWith(compareBy({ it.category }, { it.type }, { it.name }))
@@ -143,7 +158,7 @@ class ResourceBrowser(context: Context) {
      * file path and are skipped. Ids are `0xPPTTEEEE` (package / type / entry); types
      * and entries are allocated densely from 1 and 0, so we stop after a run of gaps.
      */
-    private fun enumerateFileResources(res: Resources, packageId: Int, out: MutableMap<Int, ResEntry>) {
+    private fun enumerateFileResources(res: Resources, pkg: String, packageId: Int, out: MutableMap<Int, ResEntry>) {
         if (packageId == 0) return
         val tv = TypedValue()
         var emptyTypes = 0
@@ -165,8 +180,19 @@ class ResourceBrowser(context: Context) {
                 if (path == null || !path.startsWith("res/")) continue
                 val type = runCatching { res.getResourceTypeName(id) }.getOrNull()?.lowercase() ?: continue
                 if (type !in FILE_TYPES) continue
-                val name = runCatching { res.getResourceEntryName(id) }.getOrNull() ?: continue
-                out[id] = ResEntry(type, name, id, categoryOf(type))
+                val tableName = runCatching { res.getResourceEntryName(id) }.getOrNull()
+                // When the table's entry name was collapsed by name obfuscation, the
+                // real name often survives in the kept file path — recover it from there.
+                val pathName = ENTRY.matchEntire(path)?.groupValues?.get(2)
+                val name = when {
+                    tableName != null && tableName != OBFUSCATED_NAME -> tableName
+                    pathName != null -> pathName
+                    else -> tableName ?: continue
+                }
+                // A type/name URI only resolves if the name maps back to this id; a
+                // path-recovered name (stripped from the table) does not, so it's id-only.
+                val resolvable = res.getIdentifier(name, type, pkg) == id
+                out[id] = ResEntry(type, name, id, categoryOf(type), resolvable, path)
             }
             if (anyInType) emptyTypes = 0 else emptyTypes++
             typeId++

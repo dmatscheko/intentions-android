@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -92,11 +93,12 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
         value = if (needBroken) images?.let { vm.resourceBrokenImageIds(packageName, it) } else null
     }
 
-    // Obfuscated resources have no usable name, so reference them by numeric id —
-    // `android.resource://pkg/<id>` resolves regardless, and the id distinguishes them.
+    // Use the readable type/name URI only when that name actually resolves; otherwise
+    // (obfuscated, or a name recovered from the path but stripped from the lookup table)
+    // fall back to `android.resource://pkg/<id>`, which resolves regardless.
     fun uriFor(entry: ResourceBrowser.ResEntry) =
-        if (entry.isObfuscated) "android.resource://$packageName/${entry.id}"
-        else "android.resource://$packageName/${entry.type}/${entry.name}"
+        if (entry.resolvable) "android.resource://$packageName/${entry.type}/${entry.name}"
+        else "android.resource://$packageName/${entry.id}"
 
     // Active tab's entries, its type-filter map (in the VM so it survives navigation),
     // the distinct types available for its chips, and the resulting filtered list.
@@ -109,8 +111,12 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
         val q = query.trim()
         tabEntries
             ?.filter { typeMap.accepts(it.type) }
-            // Match the visible label too, so the decimal id of an obfuscated entry is searchable.
-            ?.filter { q.isEmpty() || it.name.contains(q, true) || it.displayName.contains(q, true) || it.type.contains(q, true) }
+            // Match the visible label and the decimal id, so every resource is findable
+            // by its id (which appears in its data URI) whether or not a name is shown.
+            ?.filter {
+                q.isEmpty() || it.name.contains(q, true) || it.displayName.contains(q, true) ||
+                    it.type.contains(q, true) || it.id.toString().contains(q)
+            }
             // Images tab only: keep/drop entries by whether their drawable renders.
             // While the broken set is still being computed (null) nothing is dropped.
             ?.filter {
@@ -299,6 +305,39 @@ private fun TextList(
     }
 }
 
+/**
+ * Selectable metadata block shown between a resource dialog's title and its content:
+ * the full name, file path (as much as we recovered) and numeric id, small and wrapping.
+ */
+@Composable
+private fun ResourceMeta(entry: ResourceBrowser.ResEntry) {
+    SelectionContainer {
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            ResourceMetaRow("Name", entry.name)
+            entry.path?.let { ResourceMetaRow("Path", it) }
+            ResourceMetaRow("ID", entry.id.toString())
+        }
+    }
+}
+
+@Composable
+private fun ResourceMetaRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            "$label: ",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
 @Composable
 private fun ImageResourceDialog(
     vm: AppViewModel,
@@ -335,6 +374,7 @@ private fun ImageResourceDialog(
                         Icon(Icons.Filled.ContentCopy, contentDescription = "Copy data URI")
                     }
                 }
+                ResourceMeta(entry)
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 Box(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 360.dp),
@@ -424,6 +464,7 @@ private fun TextResourceDialog(
                         }
                     }
                 }
+                ResourceMeta(entry)
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 SelectionContainer(
                     modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
