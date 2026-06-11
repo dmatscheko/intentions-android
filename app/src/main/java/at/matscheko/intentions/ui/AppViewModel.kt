@@ -240,7 +240,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val key = "$pkg/${entry.id}"
         resourceThumbCache.get(key)?.let { return it }
         val bitmap = withContext(Dispatchers.IO) {
-            resourceBrowser.drawable(pkg, entry.id)?.toImageBitmap() ?: defaultIcon
+            resourceBrowser.drawable(pkg, entry.id)?.toImageBitmap(96) ?: defaultIcon
         }
         resourceThumbCache.put(key, bitmap)
         return bitmap
@@ -260,13 +260,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Full-size bitmap for the image-detail dialog (null if it can't be decoded). */
     suspend fun resourceImage(pkg: String, entry: ResourceBrowser.ResEntry): ImageBitmap? =
-        withContext(Dispatchers.IO) {
-            resourceBrowser.drawable(pkg, entry.id)?.let { d ->
-                val w = d.intrinsicWidth.coerceIn(1, 512)
-                val h = d.intrinsicHeight.coerceIn(1, 512)
-                d.toBitmap(w, h).asImageBitmap()
-            }
-        }
+        withContext(Dispatchers.IO) { resourceBrowser.drawable(pkg, entry.id)?.toImageBitmap(512) }
 
     // --- intent editing ------------------------------------------------------
 
@@ -362,3 +356,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
 private fun android.graphics.drawable.Drawable.toImageBitmap(): ImageBitmap =
     toBitmap(96, 96).asImageBitmap()
+
+/**
+ * Rasterize preserving the drawable's aspect ratio, with its longer side scaled to
+ * [maxPx] (so a wide/thin image stays wide/thin instead of being forced square).
+ * Falls back to a [maxPx] square for drawables with no intrinsic size (e.g. colors).
+ */
+private fun android.graphics.drawable.Drawable.toImageBitmap(maxPx: Int): ImageBitmap {
+    val w = intrinsicWidth
+    val h = intrinsicHeight
+    val (tw, th) = when {
+        w <= 0 || h <= 0 -> maxPx to maxPx
+        w >= h -> maxPx to (maxPx * h / w).coerceAtLeast(1)
+        else -> (maxPx * w / h).coerceAtLeast(1) to maxPx
+    }
+    return toBitmap(tw, th).asImageBitmap()
+}

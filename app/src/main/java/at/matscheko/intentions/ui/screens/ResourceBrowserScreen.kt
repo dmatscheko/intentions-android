@@ -238,7 +238,14 @@ private fun ImageGrid(
                     modifier = Modifier.clickable { onPick(entry) }.padding(4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Image(bitmap = thumb, contentDescription = entry.displayName, modifier = Modifier.size(64.dp))
+                    // Fixed 64dp box keeps every cell the same size; Fit scales the
+                    // bitmap into it preserving aspect ratio (centered, letterboxed).
+                    Image(
+                        bitmap = thumb,
+                        contentDescription = entry.displayName,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(64.dp),
+                    )
                     Text(
                         entry.displayName,
                         style = MaterialTheme.typography.labelSmall,
