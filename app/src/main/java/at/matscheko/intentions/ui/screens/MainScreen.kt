@@ -378,8 +378,8 @@ private fun browserItems(): List<Pair<String, ScanKind>> = listOf(
     "Show all actions" to ScanKind.ACTIONS,
     "Show all categories" to ScanKind.CATEGORIES,
     "Show all data schemes" to ScanKind.SCHEMES,
-    "Show all data mime types" to ScanKind.MIME_TYPES,
-    "Show all data authorities" to ScanKind.AUTHORITIES,
+    "Show all data MIME types" to ScanKind.MIME_TYPES,
+    "Show all data hosts" to ScanKind.AUTHORITIES,
 )
 
 /** Turn a startActivity failure into a concise explanation instead of a stack trace. */

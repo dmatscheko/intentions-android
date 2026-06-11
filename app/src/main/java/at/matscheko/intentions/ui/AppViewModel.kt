@@ -229,7 +229,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return result
     }
 
-    suspend fun collect(kind: ManifestScanner.ScanKind) =
+    suspend fun collect(kind: ManifestScanner.ScanKind): List<ManifestScanner.DataValue> =
         withContext(Dispatchers.Default) { scanner.collect(kind) }
 
     suspend fun listResources(pkg: String): List<ResourceBrowser.ResEntry> =

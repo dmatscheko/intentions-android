@@ -73,6 +73,9 @@ class ManifestScanner(context: Context) {
 
     enum class ScanKind { ACTIONS, CATEGORIES, SCHEMES, MIME_TYPES, AUTHORITIES }
 
+    /** A manifest value plus the packages that declared it (sorted by package name). */
+    data class DataValue(val value: String, val packages: List<String>)
+
     // --- Package explorer ----------------------------------------------------
 
     fun installedApps(): List<AppEntry> =
@@ -275,33 +278,37 @@ class ManifestScanner(context: Context) {
 
     // --- Data browsers -------------------------------------------------------
 
-    /** Distinct, sorted values of one manifest attribute across every installed app. */
-    fun collect(kind: ScanKind): List<String> {
-        val result = sortedSetOf<String>()
+    /**
+     * Distinct, sorted values of one manifest attribute across every installed app,
+     * each paired with the packages that declared it.
+     */
+    fun collect(kind: ScanKind): List<DataValue> {
+        val byValue = sortedMapOf<String, MutableSet<String>>()
         for (pkg in installedPackageNames()) {
             walkManifests(pkg) { parser ->
                 var event = parser.eventType
                 while (event != XmlPullParser.END_DOCUMENT) {
                     if (event == XmlPullParser.START_TAG) {
-                        when (kind) {
-                            ScanKind.ACTIONS -> if (parser.name == "action") parser.androidName()?.let { result += it }
-                            ScanKind.CATEGORIES -> if (parser.name == "category") parser.androidName()?.let { result += it }
-                            ScanKind.SCHEMES -> if (parser.name == "data") parser.androidAttr("scheme")?.let { result += it }
-                            ScanKind.MIME_TYPES -> if (parser.name == "data") parser.androidAttr("mimeType")?.let { result += it }
-                            ScanKind.AUTHORITIES -> if (parser.name == "data") {
-                                val host = parser.androidAttr("host")
-                                if (!host.isNullOrEmpty()) {
-                                    val port = parser.androidAttr("port")
-                                    result += if (port.isNullOrEmpty()) host else "$host:$port"
-                                }
-                            }
-                        }
+                        valueFor(kind, parser)?.let { byValue.getOrPut(it) { sortedSetOf() } += pkg }
                     }
                     event = parser.next()
                 }
             }
         }
-        return result.toList()
+        return byValue.map { (value, packages) -> DataValue(value, packages.toList()) }
+    }
+
+    /** The attribute value [kind] cares about at the parser's current start tag, or null. */
+    private fun valueFor(kind: ScanKind, parser: XmlResourceParser): String? = when (kind) {
+        ScanKind.ACTIONS -> if (parser.name == "action") parser.androidName() else null
+        ScanKind.CATEGORIES -> if (parser.name == "category") parser.androidName() else null
+        ScanKind.SCHEMES -> if (parser.name == "data") parser.androidAttr("scheme") else null
+        ScanKind.MIME_TYPES -> if (parser.name == "data") parser.androidAttr("mimeType") else null
+        ScanKind.AUTHORITIES -> if (parser.name == "data") {
+            val host = parser.androidAttr("host")
+            if (host.isNullOrEmpty()) null
+            else parser.androidAttr("port").let { port -> if (port.isNullOrEmpty()) host else "$host:$port" }
+        } else null
     }
 
     // --- helpers -------------------------------------------------------------
