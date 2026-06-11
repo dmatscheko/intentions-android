@@ -92,13 +92,7 @@ fun <T> EntityListScaffold(
                 label = searchLabel,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             )
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                content = filters,
-            )
+            FilterChipRow(content = filters)
             when {
                 items == null -> CircularProgressIndicator(modifier = Modifier.padding(16.dp))
                 items.isEmpty() -> Text(emptyText, modifier = Modifier.padding(16.dp))
@@ -165,21 +159,36 @@ fun RowScope.SymbolIcon(icon: ImageVector, contentDescription: String, tint: Col
     Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(20.dp))
 }
 
+/** A horizontally-scrolling row of filter chips, with the list screens' padding. */
+@Composable
+fun FilterChipRow(content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
+    )
+}
+
 /**
  * A tri-state filter chip carrying the same [icon]/[iconTint]/[label] as the row
- * symbol it legends. Tapping cycles [state] (the caller advances it via
- * [FilterState.next]). REQUIRE adds a check; EXCLUDE turns the chip red, strikes
- * the label and adds a block symbol.
+ * symbol it legends (the icon is optional — type chips just use the label).
+ * Tapping cycles [state] (the caller advances it via [FilterState.next]). REQUIRE
+ * adds a check; EXCLUDE turns the chip red, strikes the label and adds a block.
  */
 @Composable
 fun TriStateFilterChip(
     state: FilterState,
     onClick: () -> Unit,
-    icon: ImageVector,
-    iconTint: Color,
     label: String,
+    icon: ImageVector? = null,
+    iconTint: Color = Color.Unspecified,
 ) {
     val exclude = state == FilterState.EXCLUDE
+    val leading: (@Composable () -> Unit)? = icon?.let {
+        { Icon(it, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp)) }
+    }
     val trailing: (@Composable () -> Unit)? = when (state) {
         FilterState.IGNORE -> null
         else -> {
@@ -198,9 +207,7 @@ fun TriStateFilterChip(
         label = {
             Text(label, textDecoration = if (exclude) TextDecoration.LineThrough else null)
         },
-        leadingIcon = {
-            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
-        },
+        leadingIcon = leading,
         trailingIcon = trailing,
         colors = if (exclude) {
             FilterChipDefaults.filterChipColors(

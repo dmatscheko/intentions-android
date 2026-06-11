@@ -52,12 +52,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
+import at.matscheko.intentions.core.FilterState
 import at.matscheko.intentions.core.IntentClipboard
 import at.matscheko.intentions.core.ResourceBrowser
+import at.matscheko.intentions.core.accepts
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
+import at.matscheko.intentions.ui.components.FilterChipRow
 import at.matscheko.intentions.ui.components.SearchField
+import at.matscheko.intentions.ui.components.TriStateFilterChip
+import at.matscheko.intentions.ui.components.rememberXmlHighlighted
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,13 +82,18 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
     fun uriFor(entry: ResourceBrowser.ResEntry) =
         "android.resource://$packageName/${entry.type}/${entry.name}"
 
-    fun filtered(list: List<ResourceBrowser.ResEntry>?): List<ResourceBrowser.ResEntry>? {
+    // Active tab's entries, its type-filter map (in the VM so it survives navigation),
+    // the distinct types available for its chips, and the resulting filtered list.
+    val tabEntries = if (tab == 0) images else texts
+    val typeMap = if (tab == 0) vm.resourceImageTypes else vm.resourceTextTypes
+    val availableTypes = remember(tabEntries) {
+        tabEntries?.map { it.type }?.distinct()?.sorted() ?: emptyList()
+    }
+    val shown = remember(tabEntries, query, typeMap) {
         val q = query.trim()
-        return when {
-            list == null -> null
-            q.isEmpty() -> list
-            else -> list.filter { it.name.contains(q, true) || it.type.contains(q, true) }
-        }
+        tabEntries
+            ?.filter { typeMap.accepts(it.type) }
+            ?.filter { q.isEmpty() || it.name.contains(q, true) || it.type.contains(q, true) }
     }
 
     Scaffold(
@@ -114,18 +124,33 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
             SearchField(
                 value = query,
                 onValueChange = { vm.resourcesQuery = it },
-                label = "Search resources",
+                // Count reflects what's currently listed (after the type chips + search).
+                label = "Search resources" + (shown?.let { " (${it.size})" } ?: ""),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             )
+            FilterChipRow {
+                availableTypes.forEach { type ->
+                    val state = typeMap[type] ?: FilterState.IGNORE
+                    TriStateFilterChip(
+                        state = state,
+                        onClick = {
+                            val updated = typeMap + (type to state.next())
+                            if (tab == 0) vm.resourceImageTypes = updated
+                            else vm.resourceTextTypes = updated
+                        },
+                        label = type,
+                    )
+                }
+            }
             when (tab) {
-                0 -> ImageGrid(vm, packageName, filtered(images)) { entry ->
+                0 -> ImageGrid(vm, packageName, shown) { entry ->
                     val uri = uriFor(entry)
                     vm.update { it.copy(hasData = true, dataUri = uri) }
                     IntentClipboard.copyText(context, uri, "resource")
                     toast(context, "Set data URI (also copied)")
                     nav.popBackStack(Routes.MAIN, inclusive = false)
                 }
-                else -> TextList(filtered(texts)) { openText = it }
+                else -> TextList(shown) { openText = it }
             }
         }
     }
@@ -225,7 +250,6 @@ private fun TextList(
                         )
                     }
                 }
-                HorizontalDivider()
             }
         }
     }
@@ -268,7 +292,7 @@ private fun TextResourceDialog(
                     modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 ) {
                     Text(
-                        content ?: "Loading…",
+                        rememberXmlHighlighted(content ?: "Loading…"),
                         fontFamily = FontFamily.Monospace,
                         style = MaterialTheme.typography.bodySmall,
                     )

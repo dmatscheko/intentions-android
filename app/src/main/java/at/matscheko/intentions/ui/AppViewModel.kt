@@ -128,6 +128,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var componentExported by mutableStateOf(FilterState.IGNORE)
     var componentLevels by mutableStateOf<Map<ProtectionLevel, FilterState>>(emptyMap())
 
+    // Resource-browser per-tab filters by resource type (drawable, xml, raw, …).
+    var resourceImageTypes by mutableStateOf<Map<String, FilterState>>(emptyMap())
+    var resourceTextTypes by mutableStateOf<Map<String, FilterState>>(emptyMap())
+
     private var dataQueries by mutableStateOf<Map<ManifestScanner.ScanKind, String>>(emptyMap())
     fun dataQuery(kind: ManifestScanner.ScanKind): String = dataQueries[kind].orEmpty()
     fun setDataQuery(kind: ManifestScanner.ScanKind, value: String) {

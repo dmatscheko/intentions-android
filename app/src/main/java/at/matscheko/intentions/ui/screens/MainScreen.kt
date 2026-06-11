@@ -63,6 +63,7 @@ import at.matscheko.intentions.ui.Routes
 import at.matscheko.intentions.ui.components.CopyIntentButton
 import at.matscheko.intentions.ui.components.IntentCard
 import at.matscheko.intentions.ui.components.ShellRetryButton
+import at.matscheko.intentions.ui.components.rememberXmlHighlighted
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -258,7 +259,9 @@ fun MainScreen(
                 Card(modifier = Modifier.fillMaxWidth().padding(start = INDENT)) {
                     SelectionContainer {
                         Text(
-                            vm.resultText,
+                            // XML results (e.g. the manifest) get syntax highlighting;
+                            // plain results are returned unchanged by the highlighter.
+                            rememberXmlHighlighted(vm.resultText),
                             modifier = Modifier.padding(16.dp),
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
