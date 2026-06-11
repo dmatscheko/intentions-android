@@ -57,4 +57,23 @@ class AmCommandTest {
         assertThat(cmd).contains("-c A")
         assertThat(cmd).contains("-c B")
     }
+
+    /** A disabled part is excluded even when its fields still hold values. */
+    @Test
+    fun disabledPartsAreExcluded() {
+        val spec = IntentSpec(
+            hasComponent = false, packageName = "com.x", className = "com.x.A",
+            hasAction = false, action = "android.intent.action.VIEW",
+            hasData = false, dataUri = "https://example.com", mimeType = "text/plain",
+            hasCategories = false, categories = listOf("A"),
+        )
+        assertThat(AmCommand.build(spec)).isEqualTo("adb shell am start")
+    }
+
+    /** An enabled-but-empty action is kept (as -a ''), not silently dropped. */
+    @Test
+    fun enabledEmptyActionIsEmitted() {
+        val spec = IntentSpec(hasAction = true, action = "")
+        assertThat(AmCommand.build(spec)).isEqualTo("adb shell am start -a ''")
+    }
 }

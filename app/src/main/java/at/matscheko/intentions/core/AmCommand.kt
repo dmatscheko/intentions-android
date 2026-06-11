@@ -20,7 +20,9 @@ object AmCommand {
     fun build(spec: IntentSpec, verb: String = "start"): String {
         val parts = mutableListOf("adb", "shell", "am", verb)
 
-        if (spec.hasAction && spec.action.isNotBlank()) {
+        // Enabled is the only gate (matches IntentSpec.toIntent): an enabled-but-empty
+        // action is emitted as -a '' so the command mirrors the intent exactly.
+        if (spec.hasAction) {
             parts += "-a"; parts += quote(spec.action)
         }
         if (spec.hasData) {

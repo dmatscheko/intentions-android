@@ -44,7 +44,9 @@ data class IntentSpec(
                 packageName.isNotEmpty() -> intent.setPackage(packageName)
             }
         }
-        if (hasAction && action.isNotEmpty()) {
+        // Enabled is the only gate: an enabled-but-empty Action is kept as an empty
+        // action (distinct from "no action", which is what disabling it produces).
+        if (hasAction) {
             intent.action = action
         }
         if (hasData) {

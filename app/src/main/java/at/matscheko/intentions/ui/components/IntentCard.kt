@@ -32,8 +32,12 @@ fun IntentCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
 ) {
-    val icon by produceState(initialValue = vm.defaultIcon, spec.packageName) {
-        value = vm.appIcon(spec.packageName)
+    // The component (package/class/icon) only counts when the section is enabled —
+    // a disabled Component must not appear here even if its fields still hold values.
+    val pkg = if (spec.hasComponent) spec.packageName else ""
+    val cls = if (spec.hasComponent) spec.className else ""
+    val icon by produceState(initialValue = vm.defaultIcon, pkg) {
+        value = vm.appIcon(pkg)
     }
 
     val body: @Composable () -> Unit = {
@@ -41,12 +45,12 @@ fun IntentCard(
             Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(40.dp))
             Spacer(Modifier.width(12.dp))
             Column {
-                if (spec.packageName.isNotEmpty()) {
-                    Text(spec.packageName, style = MaterialTheme.typography.titleSmall)
+                if (pkg.isNotEmpty()) {
+                    Text(pkg, style = MaterialTheme.typography.titleSmall)
                 }
-                if (spec.className.isNotEmpty()) {
+                if (cls.isNotEmpty()) {
                     Text(
-                        spec.className,
+                        cls,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -54,7 +58,7 @@ fun IntentCard(
                 val description = buildDescription(spec)
                 if (description.isNotEmpty()) {
                     Text(description, style = MaterialTheme.typography.bodyMedium)
-                } else if (spec.packageName.isEmpty()) {
+                } else if (pkg.isEmpty() && cls.isEmpty()) {
                     Text("(empty intent)", style = MaterialTheme.typography.bodyMedium)
                 }
             }

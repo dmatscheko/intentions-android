@@ -93,4 +93,31 @@ class IntentSpecRoundTripTest {
         assertThat(intent.component).isNull()
         assertThat(intent.action).isEqualTo("android.intent.action.VIEW")
     }
+
+    /** Every disabled part is dropped from the built intent, even with values present. */
+    @Test
+    fun allDisabledPartsAreOmitted() {
+        val spec = IntentSpec(
+            hasComponent = false, packageName = "com.x", className = "com.x.A",
+            hasAction = false, action = "android.intent.action.VIEW",
+            hasData = false, dataUri = "content://a/b", mimeType = "text/plain",
+            hasCategories = false, categories = listOf("c1"),
+            hasExtras = false, extras = listOf(ExtraEntry("k", "v", ExtraType.STRING)),
+        )
+        val intent = spec.toIntent()
+        assertThat(intent.component).isNull()
+        assertThat(intent.`package`).isNull()
+        assertThat(intent.action).isNull()
+        assertThat(intent.data).isNull()
+        assertThat(intent.type).isNull()
+        assertThat(intent.categories).isNull()
+        assertThat(intent.extras).isNull()
+    }
+
+    /** An enabled-but-empty action is kept as an empty action (not dropped to null). */
+    @Test
+    fun enabledEmptyActionIsKept() {
+        val intent = IntentSpec(hasAction = true, action = "").toIntent()
+        assertThat(intent.action).isEqualTo("")
+    }
 }
