@@ -10,14 +10,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.navigation.NavController
+import at.matscheko.intentions.core.FilterState
 import at.matscheko.intentions.core.ProtectionLevel
 import at.matscheko.intentions.core.ProviderPaths
+import at.matscheko.intentions.core.accepts
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
-import at.matscheko.intentions.ui.components.AttributeChip
 import at.matscheko.intentions.ui.components.EntityListScaffold
 import at.matscheko.intentions.ui.components.EntityRow
 import at.matscheko.intentions.ui.components.SymbolIcon
+import at.matscheko.intentions.ui.components.TriStateFilterChip
 import at.matscheko.intentions.ui.components.rememberAppIcon
 
 @Composable
@@ -27,8 +29,8 @@ fun ProvidersScreen(vm: AppViewModel, nav: NavController) {
     // Search text and filters live in the ViewModel so they survive navigation
     // (remembered until the app process is terminated).
     val query = vm.providersQuery
-    val exportedOnly = vm.providerExportedOnly
-    val levelFilter = vm.providerLevels
+    val exported = vm.providerExported
+    val levels = vm.providerLevels
 
     // The authority currently in the query screen's URI box — highlighted and scrolled to.
     val selectedAuthority = remember(vm.contentUri) {
@@ -36,11 +38,11 @@ fun ProvidersScreen(vm: AppViewModel, nav: NavController) {
     }
     val listState = rememberLazyListState()
 
-    val shown = remember(providers, query, exportedOnly, levelFilter) {
+    val shown = remember(providers, query, exported, levels) {
         val q = query.trim()
         providers
-            ?.filter { !exportedOnly || it.exported }
-            ?.filter { levelFilter.isEmpty() || it.readPermissionLevel in levelFilter }
+            ?.filter { exported.accepts(it.exported) }
+            ?.filter { levels.accepts(it.readPermissionLevel) }
             ?.filter { q.isEmpty() || it.authority.contains(q, true) || it.packageName.contains(q, true) }
     }
 
@@ -63,21 +65,19 @@ fun ProvidersScreen(vm: AppViewModel, nav: NavController) {
         listState = listState,
         emptyText = "No content providers found.",
         filters = {
-            AttributeChip(
-                selected = exportedOnly,
-                onClick = { vm.providerExportedOnly = !exportedOnly },
+            TriStateFilterChip(
+                state = exported,
+                onClick = { vm.providerExported = exported.next() },
                 icon = Icons.Filled.Public,
                 iconTint = ExportedTint,
                 label = "Exported",
             )
             ProtectionLevel.entries.forEach { level ->
                 val visual = protectionVisual(level)
-                AttributeChip(
-                    selected = level in levelFilter,
-                    onClick = {
-                        vm.providerLevels =
-                            if (level in levelFilter) levelFilter - level else levelFilter + level
-                    },
+                val state = levels[level] ?: FilterState.IGNORE
+                TriStateFilterChip(
+                    state = state,
+                    onClick = { vm.providerLevels = levels + (level to state.next()) },
                     icon = visual.icon,
                     iconTint = visual.color,
                     label = visual.label,

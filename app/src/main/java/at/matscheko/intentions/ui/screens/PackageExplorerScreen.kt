@@ -10,11 +10,11 @@ import at.matscheko.intentions.core.IntentClipboard
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
-import at.matscheko.intentions.ui.components.AttributeChip
 import at.matscheko.intentions.ui.components.EntityListScaffold
 import at.matscheko.intentions.ui.components.EntityRow
 import at.matscheko.intentions.ui.components.ListOverflowMenu
 import at.matscheko.intentions.ui.components.SymbolIcon
+import at.matscheko.intentions.ui.components.TriStateFilterChip
 import at.matscheko.intentions.ui.components.rememberAppIcon
 
 @Composable
@@ -24,14 +24,14 @@ fun PackageExplorerScreen(vm: AppViewModel, nav: NavController) {
     val selectedPackage = vm.spec.packageName
     val listState = rememberLazyListState()
     val query = vm.appsQuery
-    val systemOnly = vm.appSystemOnly
-    val disabledOnly = vm.appDisabledOnly
+    val system = vm.appSystem
+    val disabled = vm.appDisabled
 
-    val shown = remember(apps, query, systemOnly, disabledOnly) {
+    val shown = remember(apps, query, system, disabled) {
         val q = query.trim()
         apps
-            ?.filter { !systemOnly || it.isSystem }
-            ?.filter { !disabledOnly || !it.enabled }
+            ?.filter { system.accepts(it.isSystem) }
+            ?.filter { disabled.accepts(!it.enabled) }
             ?.filter { q.isEmpty() || it.label.contains(q, true) || it.packageName.contains(q, true) }
     }
 
@@ -65,16 +65,16 @@ fun PackageExplorerScreen(vm: AppViewModel, nav: NavController) {
         },
         // The chips double as a legend for the row symbols and as filters.
         filters = {
-            AttributeChip(
-                selected = systemOnly,
-                onClick = { vm.appSystemOnly = !systemOnly },
+            TriStateFilterChip(
+                state = system,
+                onClick = { vm.appSystem = system.next() },
                 icon = AppAttribute.SYSTEM.icon,
                 iconTint = AppAttribute.SYSTEM.color,
                 label = AppAttribute.SYSTEM.label,
             )
-            AttributeChip(
-                selected = disabledOnly,
-                onClick = { vm.appDisabledOnly = !disabledOnly },
+            TriStateFilterChip(
+                state = disabled,
+                onClick = { vm.appDisabled = disabled.next() },
                 icon = AppAttribute.DISABLED.icon,
                 iconTint = AppAttribute.DISABLED.color,
                 label = AppAttribute.DISABLED.label,

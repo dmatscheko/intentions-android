@@ -29,18 +29,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import at.matscheko.intentions.core.FilterState
 import at.matscheko.intentions.core.IntentClipboard
 import at.matscheko.intentions.core.ManifestScanner
 import at.matscheko.intentions.core.ProtectionLevel
+import at.matscheko.intentions.core.accepts
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
-import at.matscheko.intentions.ui.components.AttributeChip
 import at.matscheko.intentions.ui.components.EntityListScaffold
 import at.matscheko.intentions.ui.components.EntityRow
 import at.matscheko.intentions.ui.components.ListOverflowMenu
 import at.matscheko.intentions.ui.components.SymbolIcon
+import at.matscheko.intentions.ui.components.TriStateFilterChip
 
 private sealed interface DetailRow {
     data class Header(val title: String) : DetailRow
@@ -61,15 +63,15 @@ fun PackageDetailScreen(vm: AppViewModel, nav: NavController, packageName: Strin
 
     val selectedClass = vm.spec.className
     val listState = rememberLazyListState()
-    val exportedOnly = vm.componentExportedOnly
-    val levelFilter = vm.componentLevels
+    val exported = vm.componentExported
+    val levels = vm.componentLevels
 
-    val rows: List<DetailRow> = remember(sections, query, exportedOnly, levelFilter) {
+    val rows: List<DetailRow> = remember(sections, query, exported, levels) {
         val q = query.trim()
         sections?.flatMap { section ->
             val items = section.items
-                .filter { !exportedOnly || it.exported }
-                .filter { levelFilter.isEmpty() || it.permissionLevel in levelFilter }
+                .filter { exported.accepts(it.exported) }
+                .filter { levels.accepts(it.permissionLevel) }
                 .filter {
                     q.isEmpty() ||
                         it.className.contains(q, true) ||
@@ -169,21 +171,19 @@ fun PackageDetailScreen(vm: AppViewModel, nav: NavController, packageName: Strin
         // protection levels that can actually appear as a symbol are offered
         // (NONE shows no icon, so it would be a misleading legend entry).
         filters = {
-            AttributeChip(
-                selected = exportedOnly,
-                onClick = { vm.componentExportedOnly = !exportedOnly },
+            TriStateFilterChip(
+                state = exported,
+                onClick = { vm.componentExported = exported.next() },
                 icon = Icons.Filled.Public,
                 iconTint = ExportedTint,
                 label = "Exported",
             )
             ProtectionLevel.entries.filter { it != ProtectionLevel.NONE }.forEach { level ->
                 val visual = protectionVisual(level)
-                AttributeChip(
-                    selected = level in levelFilter,
-                    onClick = {
-                        vm.componentLevels =
-                            if (level in levelFilter) levelFilter - level else levelFilter + level
-                    },
+                val state = levels[level] ?: FilterState.IGNORE
+                TriStateFilterChip(
+                    state = state,
+                    onClick = { vm.componentLevels = levels + (level to state.next()) },
                     icon = visual.icon,
                     iconTint = visual.color,
                     label = visual.label,

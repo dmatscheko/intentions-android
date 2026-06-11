@@ -20,9 +20,12 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,8 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import at.matscheko.intentions.core.FilterState
 
 /**
  * The package explorer, its component detail and the content-providers screen are
@@ -160,21 +165,51 @@ fun RowScope.SymbolIcon(icon: ImageVector, contentDescription: String, tint: Col
     Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(20.dp))
 }
 
-/** A filter chip carrying the same icon/tint/label as the row symbol it legends. */
+/**
+ * A tri-state filter chip carrying the same [icon]/[iconTint]/[label] as the row
+ * symbol it legends. Tapping cycles [state] (the caller advances it via
+ * [FilterState.next]). REQUIRE adds a check; EXCLUDE turns the chip red, strikes
+ * the label and adds a block symbol.
+ */
 @Composable
-fun AttributeChip(
-    selected: Boolean,
+fun TriStateFilterChip(
+    state: FilterState,
     onClick: () -> Unit,
     icon: ImageVector,
     iconTint: Color,
     label: String,
 ) {
+    val exclude = state == FilterState.EXCLUDE
+    val trailing: (@Composable () -> Unit)? = when (state) {
+        FilterState.IGNORE -> null
+        else -> {
+            {
+                Icon(
+                    imageVector = if (exclude) Icons.Filled.Block else Icons.Filled.Check,
+                    contentDescription = if (exclude) "Excluded" else "Required",
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
     FilterChip(
-        selected = selected,
+        selected = state != FilterState.IGNORE,
         onClick = onClick,
-        label = { Text(label) },
+        label = {
+            Text(label, textDecoration = if (exclude) TextDecoration.LineThrough else null)
+        },
         leadingIcon = {
             Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
+        },
+        trailingIcon = trailing,
+        colors = if (exclude) {
+            FilterChipDefaults.filterChipColors(
+                selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer,
+                selectedTrailingIconColor = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        } else {
+            FilterChipDefaults.filterChipColors()
         },
     )
 }

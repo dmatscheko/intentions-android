@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import at.matscheko.intentions.core.FilterState
 import at.matscheko.intentions.core.IntentCodec
 import at.matscheko.intentions.core.ManifestScanner
 import at.matscheko.intentions.core.ProtectionLevel
@@ -114,16 +115,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var providersQuery by mutableStateOf("")
     var resourcesQuery by mutableStateOf("")
 
-    var providerExportedOnly by mutableStateOf(false)
-    var providerLevels by mutableStateOf<Set<ProtectionLevel>>(emptySet())
+    // All list filters are tri-state (ignore / require / exclude). Protection
+    // levels are a per-level map since an item carries exactly one level.
+    var providerExported by mutableStateOf(FilterState.IGNORE)
+    var providerLevels by mutableStateOf<Map<ProtectionLevel, FilterState>>(emptyMap())
 
-    // Package-explorer app-list filters (show only apps with the attribute).
-    var appSystemOnly by mutableStateOf(false)
-    var appDisabledOnly by mutableStateOf(false)
+    // Package-explorer app-list filters.
+    var appSystem by mutableStateOf(FilterState.IGNORE)
+    var appDisabled by mutableStateOf(FilterState.IGNORE)
 
-    // Component-list filters (exported + which protection levels to include).
-    var componentExportedOnly by mutableStateOf(false)
-    var componentLevels by mutableStateOf<Set<ProtectionLevel>>(emptySet())
+    // Component-list filters.
+    var componentExported by mutableStateOf(FilterState.IGNORE)
+    var componentLevels by mutableStateOf<Map<ProtectionLevel, FilterState>>(emptyMap())
 
     private var dataQueries by mutableStateOf<Map<ManifestScanner.ScanKind, String>>(emptyMap())
     fun dataQuery(kind: ManifestScanner.ScanKind): String = dataQueries[kind].orEmpty()
