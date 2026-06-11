@@ -1,5 +1,6 @@
 package at.matscheko.intentions.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -27,7 +29,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -41,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -201,28 +203,22 @@ fun EditIntentScreen(vm: AppViewModel, nav: NavController, path: List<Int> = emp
 
             Section("Categories", spec.hasCategories, { c -> vm.updateAt(path) { it.copy(hasCategories = c) } }) {
                 val active = spec.categories.filter { it.isNotBlank() }
-                Text(
-                    if (active.isEmpty()) "No categories" else active.joinToString("\n"),
-                    style = MaterialTheme.typography.bodyMedium,
+                TapToEdit(
+                    summary = if (active.isEmpty()) "No categories" else active.joinToString("\n"),
+                    onClick = { nav.navigate(Routes.categories(path)) },
                 )
-                OutlinedButton(onClick = { nav.navigate(Routes.categories(path)) }) {
-                    Text("Edit categories")
-                }
             }
 
             Section("Extras", spec.hasExtras, { c -> vm.updateAt(path) { it.copy(hasExtras = c) } }) {
                 val active = spec.extras.filter { it.name.isNotBlank() }
-                Text(
-                    if (active.isEmpty()) "No extras"
+                TapToEdit(
+                    summary = if (active.isEmpty()) "No extras"
                     else active.joinToString("\n") {
                         if (it.type == ExtraType.INTENT) "${it.name}: (nested intent)"
                         else "${it.name}: ${it.value} (${it.type.label})"
                     },
-                    style = MaterialTheme.typography.bodyMedium,
+                    onClick = { nav.navigate(Routes.extras(path)) },
                 )
-                OutlinedButton(onClick = { nav.navigate(Routes.extras(path)) }) {
-                    Text("Edit extras")
-                }
             }
 
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -259,6 +255,30 @@ fun EditIntentScreen(vm: AppViewModel, nav: NavController, path: List<Int> = emp
                 }
             }
         }
+    }
+}
+
+/**
+ * A tappable summary that opens its own editor screen — replaces the old
+ * "Edit …" buttons so the categories/extras sections take less vertical space.
+ * The "(tap to edit)" hint keeps the affordance discoverable.
+ */
+@Composable
+private fun TapToEdit(summary: String, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+    ) {
+        Text(summary, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "(tap to edit)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
     }
 }
 

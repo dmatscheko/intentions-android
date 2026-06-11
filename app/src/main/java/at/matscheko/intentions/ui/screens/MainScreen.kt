@@ -194,7 +194,7 @@ fun MainScreen(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
                 ) {
                     Text(
-                        "(click to edit)",
+                        "(tap to edit)",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
