@@ -1,0 +1,77 @@
+name: Release
+
+# Two ways to cut a release, both feeding the same single version value into the
+# build, the git tag and the GitHub Release so they can't drift:
+#   1. Actions tab -> Release -> "Run workflow", type a version like 0.3
+#   2. git tag v0.3 && git push origin v0.3
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version name, e.g. 0.3 (the tag becomes v0.3)'
+        required: true
+  push:
+    tags: [ 'v*' ]
+
+# Needed to create the tag, the GitHub Release and upload the APK.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Single source of truth: the manual input, or the pushed tag minus its "v".
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "name=$VERSION"   >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION"   >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
+
+      # Decode the keystore from the base64 repo Secret into a temp file (kept out of
+      # the workspace so it can't end up in any artifact). The runner is wiped after.
+      - name: Restore signing keystore
+        run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+      # versionName comes from the resolved version; versionCode uses the always-
+      # increasing run number so each release outranks the last. The keystore env vars
+      # make app/build.gradle.kts sign with the stable release key.
+      - name: Build release APK
+        env:
+          RELEASE_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: >
+          ./gradlew assembleRelease
+          -PversionName=${{ steps.version.outputs.name }}
+          -PversionCode=${{ github.run_number }}
+
+      # Names the tag and release after the resolved version. On manual runs the tag
+      # doesn't exist yet, so this action creates it at the current commit.
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          files: app/build/outputs/apk/release/*.apk
+          generate_release_notes: true

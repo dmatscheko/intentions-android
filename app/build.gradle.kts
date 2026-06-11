@@ -15,8 +15,25 @@ android {
         applicationId = "at.matscheko.intentions"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.2"
+        // Version is supplied by CI (-PversionName / -PversionCode) so the git tag,
+        // the GitHub Release and the APK can't drift. Local builds fall back to a
+        // "dev" marker rather than a real version number.
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
+        versionName = (project.findProperty("versionName") as String?) ?: "0.0-dev"
+    }
+
+    signingConfigs {
+        // Populated from environment variables that CI sets from repo Secrets. When
+        // they're absent (local builds) the config stays empty and release falls back
+        // to the debug key below.
+        create("release") {
+            System.getenv("RELEASE_KEYSTORE_FILE")?.let { path ->
+                storeFile = file(path)
+                storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -26,6 +43,14 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Sign with the stable release key when CI provides it (a consistent
+            // identity, so updates install in place); otherwise use the debug key so
+            // local release builds still work without any secrets.
+            signingConfig = if (System.getenv("RELEASE_KEYSTORE_FILE") != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
