@@ -3,6 +3,7 @@ package at.matscheko.intentions.ui.screens
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,8 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -46,6 +49,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +75,7 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
     val query = vm.resourcesQuery
     var tab by remember { mutableIntStateOf(0) }
     var openText by remember { mutableStateOf<ResourceBrowser.ResEntry?>(null) }
+    var openImage by remember { mutableStateOf<ResourceBrowser.ResEntry?>(null) }
 
     val entries by produceState<List<ResourceBrowser.ResEntry>?>(initialValue = null, packageName) {
         value = vm.listResources(packageName)
@@ -78,8 +84,19 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
     val images = remember(entries) { entries?.filter { it.category == ResourceBrowser.Category.IMAGE } }
     val texts = remember(entries) { entries?.filter { it.category == ResourceBrowser.Category.TEXT } }
 
+    // Which images fail to decode (only the placeholder icon shows). Computed lazily
+    // and only while the "Displayable" filter is active, since it decodes every image.
+    val showableFilter = vm.resourceImageShowable
+    val needBroken = tab == 0 && showableFilter != FilterState.IGNORE
+    val brokenImageIds by produceState<Set<Int>?>(null, images, packageName, needBroken) {
+        value = if (needBroken) images?.let { vm.resourceBrokenImageIds(packageName, it) } else null
+    }
+
+    // Obfuscated resources have no usable name, so reference them by numeric id —
+    // `android.resource://pkg/<id>` resolves regardless, and the id distinguishes them.
     fun uriFor(entry: ResourceBrowser.ResEntry) =
-        "android.resource://$packageName/${entry.type}/${entry.name}"
+        if (entry.isObfuscated) "android.resource://$packageName/${entry.id}"
+        else "android.resource://$packageName/${entry.type}/${entry.name}"
 
     // Active tab's entries, its type-filter map (in the VM so it survives navigation),
     // the distinct types available for its chips, and the resulting filtered list.
@@ -88,11 +105,17 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
     val availableTypes = remember(tabEntries) {
         tabEntries?.map { it.type }?.distinct()?.sorted() ?: emptyList()
     }
-    val shown = remember(tabEntries, query, typeMap) {
+    val shown = remember(tabEntries, query, typeMap, tab, showableFilter, brokenImageIds) {
         val q = query.trim()
         tabEntries
             ?.filter { typeMap.accepts(it.type) }
-            ?.filter { q.isEmpty() || it.name.contains(q, true) || it.type.contains(q, true) }
+            // Match the visible label too, so the decimal id of an obfuscated entry is searchable.
+            ?.filter { q.isEmpty() || it.name.contains(q, true) || it.displayName.contains(q, true) || it.type.contains(q, true) }
+            // Images tab only: keep/drop entries by whether their drawable renders.
+            // While the broken set is still being computed (null) nothing is dropped.
+            ?.filter {
+                tab != 0 || brokenImageIds?.let { broken -> showableFilter.accepts(it.id !in broken) } ?: true
+            }
     }
 
     Scaffold(
@@ -127,6 +150,13 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
                 // Count reflects what's currently listed (after the type chips + search).
                 count = shown?.size,
             ) {
+                if (tab == 0) {
+                    TriStateFilterChip(
+                        state = showableFilter,
+                        onClick = { vm.resourceImageShowable = showableFilter.next() },
+                        label = "Displayable",
+                    )
+                }
                 availableTypes.forEach { type ->
                     val state = typeMap[type] ?: FilterState.IGNORE
                     TriStateFilterChip(
@@ -141,16 +171,26 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
                 }
             }
             when (tab) {
-                0 -> ImageGrid(vm, packageName, shown) { entry ->
-                    val uri = uriFor(entry)
-                    vm.update { it.copy(hasData = true, dataUri = uri) }
-                    IntentClipboard.copyText(context, uri, "resource")
-                    toast(context, "Set data URI (also copied)")
-                    nav.popBackStack(Routes.MAIN, inclusive = false)
-                }
+                0 -> ImageGrid(vm, packageName, shown) { openImage = it }
                 else -> TextList(shown) { openText = it }
             }
         }
+    }
+
+    openImage?.let { entry ->
+        ImageResourceDialog(
+            vm = vm,
+            packageName = packageName,
+            entry = entry,
+            uri = uriFor(entry),
+            onDismiss = { openImage = null },
+            onUseUri = { uri ->
+                vm.update { it.copy(hasData = true, dataUri = uri) }
+                toast(context, "Set data URI")
+                openImage = null
+                nav.popBackStack(Routes.MAIN, inclusive = false)
+            },
+        )
     }
 
     openText?.let { entry ->
@@ -162,8 +202,7 @@ fun ResourceBrowserScreen(vm: AppViewModel, nav: NavController, packageName: Str
             onDismiss = { openText = null },
             onUseUri = { uri ->
                 vm.update { it.copy(hasData = true, dataUri = uri) }
-                IntentClipboard.copyText(context, uri, "resource")
-                toast(context, "Set data URI (also copied)")
+                toast(context, "Set data URI")
                 openText = null
                 nav.popBackStack(Routes.MAIN, inclusive = false)
             },
@@ -191,7 +230,7 @@ private fun ImageGrid(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(shown, key = { "${it.type}/${it.name}" }) { entry ->
+            items(shown, key = { it.id }) { entry ->
                 val thumb by produceState(initialValue = vm.defaultIcon, entry) {
                     value = vm.resourceThumb(packageName, entry)
                 }
@@ -199,9 +238,9 @@ private fun ImageGrid(
                     modifier = Modifier.clickable { onPick(entry) }.padding(4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Image(bitmap = thumb, contentDescription = entry.name, modifier = Modifier.size(64.dp))
+                    Image(bitmap = thumb, contentDescription = entry.displayName, modifier = Modifier.size(64.dp))
                     Text(
-                        entry.name,
+                        entry.displayName,
                         style = MaterialTheme.typography.labelSmall,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -225,7 +264,7 @@ private fun TextList(
             modifier = Modifier.padding(16.dp),
         )
         else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(shown, key = { "${it.type}/${it.name}" }) { entry ->
+            items(shown, key = { it.id }) { entry ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -240,13 +279,82 @@ private fun TextList(
                         modifier = Modifier.size(24.dp),
                     )
                     Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                        Text(entry.name, style = MaterialTheme.typography.bodyLarge)
+                        Text(entry.displayName, style = MaterialTheme.typography.bodyLarge)
                         Text(
                             "res/${entry.type}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImageResourceDialog(
+    vm: AppViewModel,
+    packageName: String,
+    entry: ResourceBrowser.ResEntry,
+    uri: String,
+    onDismiss: () -> Unit,
+    onUseUri: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    // Loading and decode-failure both surface as a null bitmap, so track them apart:
+    // `loaded` flips true once decoding has run, distinguishing the two for the UI.
+    var loaded by remember(entry) { mutableStateOf(false) }
+    val image by produceState<ImageBitmap?>(initialValue = null, entry) {
+        value = vm.resourceImage(packageName, entry)
+        loaded = true
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Card {
+            Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AssistChip(onClick = {}, label = { Text(entry.type) })
+                    Text(
+                        entry.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(start = 12.dp),
+                    )
+                    IconButton(onClick = {
+                        IntentClipboard.copyText(context, uri, "resource")
+                        toast(context, "Copied data URI")
+                    }) {
+                        Icon(Icons.Filled.ContentCopy, contentDescription = "Copy data URI")
+                    }
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Box(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 360.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val bitmap = image
+                    when {
+                        bitmap != null -> Image(
+                            bitmap = bitmap,
+                            contentDescription = entry.displayName,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        !loaded -> CircularProgressIndicator()
+                        else -> Text(
+                            "(could not decode this image)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = { onUseUri(uri) }) { Text("Use as data URI") }
+                    TextButton(onClick = onDismiss) { Text("Close") }
                 }
             }
         }
@@ -263,6 +371,7 @@ private fun TextResourceDialog(
     onUseUri: (String) -> Unit,
 ) {
     val context = LocalContext.current
+    var copyMenuOpen by remember { mutableStateOf(false) }
     val content by produceState<String?>(initialValue = null, entry) {
         value = vm.resourceText(packageName, entry) ?: "(could not decode this resource)"
     }
@@ -272,17 +381,40 @@ private fun TextResourceDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AssistChip(onClick = {}, label = { Text(entry.type) })
                     Text(
-                        entry.name,
+                        entry.displayName,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(start = 12.dp),
                     )
-                    IconButton(onClick = {
-                        content?.let { IntentClipboard.copyText(context, it, "resource text") }
-                        toast(context, "Copied")
-                    }) {
-                        Icon(Icons.Filled.ContentCopy, contentDescription = "Copy text")
+                    Box {
+                        IconButton(onClick = { copyMenuOpen = true }) {
+                            Icon(Icons.Filled.ContentCopy, contentDescription = "Copy")
+                        }
+                        DropdownMenu(
+                            expanded = copyMenuOpen,
+                            onDismissRequest = { copyMenuOpen = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Copy text") },
+                                onClick = {
+                                    content?.let { IntentClipboard.copyText(context, it, "resource text") }
+                                    toast(context, "Copied text")
+                                    copyMenuOpen = false
+                                },
+                            )
+                            // The manifest is a synthetic entry, not a real resource URI.
+                            if (entry.id != 0) {
+                                DropdownMenuItem(
+                                    text = { Text("Copy data URI") },
+                                    onClick = {
+                                        IntentClipboard.copyText(context, uri, "resource")
+                                        toast(context, "Copied data URI")
+                                        copyMenuOpen = false
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

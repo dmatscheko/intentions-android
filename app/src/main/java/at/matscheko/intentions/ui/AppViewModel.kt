@@ -134,6 +134,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var resourceImageTypes by mutableStateOf<Map<String, FilterState>>(emptyMap())
     var resourceTextTypes by mutableStateOf<Map<String, FilterState>>(emptyMap())
 
+    // Images tab: tri-state filter on whether a drawable actually renders, vs.
+    // falling back to the placeholder icon (e.g. resource-obfuscated apps).
+    var resourceImageShowable by mutableStateOf(FilterState.IGNORE)
+
     // Bookmark / recent list filters (query + facet/security chips).
     var bookmarkFilters by mutableStateOf(IntentFilters())
     var recentFilters by mutableStateOf(IntentFilters())
@@ -231,7 +235,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         withContext(Dispatchers.Default) { resourceBrowser.list(pkg) }
 
     suspend fun resourceThumb(pkg: String, entry: ResourceBrowser.ResEntry): ImageBitmap {
-        val key = "$pkg/${entry.type}/${entry.name}"
+        // Key by id: obfuscated entries share one placeholder name, so a name-based
+        // key would collide and serve one entry's thumbnail for all of them.
+        val key = "$pkg/${entry.id}"
         resourceThumbCache.get(key)?.let { return it }
         val bitmap = withContext(Dispatchers.IO) {
             resourceBrowser.drawable(pkg, entry.id)?.toImageBitmap() ?: defaultIcon
@@ -242,6 +248,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun resourceText(pkg: String, entry: ResourceBrowser.ResEntry): String? =
         withContext(Dispatchers.IO) { resourceBrowser.text(pkg, entry) }
+
+    /**
+     * Ids of the given image [entries] whose drawable can't be decoded — these
+     * render only the fallback icon. Backs the Images tab's "Displayable" filter.
+     */
+    suspend fun resourceBrokenImageIds(pkg: String, entries: List<ResourceBrowser.ResEntry>): Set<Int> =
+        withContext(Dispatchers.IO) {
+            buildSet { for (e in entries) if (resourceBrowser.drawable(pkg, e.id) == null) add(e.id) }
+        }
+
+    /** Full-size bitmap for the image-detail dialog (null if it can't be decoded). */
+    suspend fun resourceImage(pkg: String, entry: ResourceBrowser.ResEntry): ImageBitmap? =
+        withContext(Dispatchers.IO) {
+            resourceBrowser.drawable(pkg, entry.id)?.let { d ->
+                val w = d.intrinsicWidth.coerceIn(1, 512)
+                val h = d.intrinsicHeight.coerceIn(1, 512)
+                d.toBitmap(w, h).asImageBitmap()
+            }
+        }
 
     // --- intent editing ------------------------------------------------------
 

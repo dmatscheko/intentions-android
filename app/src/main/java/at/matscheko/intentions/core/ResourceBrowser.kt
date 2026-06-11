@@ -39,7 +39,19 @@ class ResourceBrowser(context: Context) {
         val name: String,
         val id: Int,
         val category: Category,
-    )
+    ) {
+        /** True when resource-name obfuscation stripped the real name (see [OBFUSCATED_NAME]). */
+        val isObfuscated: Boolean get() = name == OBFUSCATED_NAME
+
+        /**
+         * Label to show the user: the real entry name, or — when the app was built
+         * with resource-name obfuscation so the name can't be recovered — an id-based
+         * fallback that tells them why, and keeps obfuscated entries distinguishable.
+         * The id is decimal to match the `android.resource://pkg/<id>` data URI.
+         */
+        val displayName: String
+            get() = if (isObfuscated) "Obfuscated name #$id" else name
+    }
 
     @Synchronized
     private fun resources(pkg: String): Resources? =
@@ -177,6 +189,9 @@ class ResourceBrowser(context: Context) {
 
     private companion object {
         const val MAX_RAW_BYTES = 512 * 1024
+        // Placeholder name AAPT2/R8 leaves when resource-name obfuscation strips the
+        // real entry name (e.g. Chrome). The same string for every such resource.
+        const val OBFUSCATED_NAME = "0_resource_name_obfuscated"
         // How many consecutive missing entries / empty types end a table sweep.
         const val EMPTY_ENTRY_LIMIT = 48
         const val EMPTY_TYPE_LIMIT = 8
