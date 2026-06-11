@@ -86,21 +86,9 @@ fun SavedIntentCard(
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Delete") }
             }
 
-            val features = IntentFeature.entries.filter { it.present(spec) }
-            val level = security?.permissionLevel ?: ProtectionLevel.NONE
-            val exported = security?.exported == true
-            if (features.isNotEmpty() || exported || level != ProtectionLevel.NONE) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    features.forEach {
-                        val v = intentFeatureVisual(it)
-                        SymbolIcon(v.icon, v.label, v.color)
-                    }
-                    if (level != ProtectionLevel.NONE) {
-                        val v = protectionVisual(level)
-                        SymbolIcon(v.icon, "Target permission: ${v.label}", v.color)
-                    }
-                    if (exported) SymbolIcon(Icons.Filled.Public, "Target exported", ExportedTint)
-                }
+            // Right-aligned symbols; an empty row is zero-height, so no guard needed.
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IntentSymbols(spec, security)
             }
 
             IntentCard(
@@ -110,6 +98,27 @@ fun SavedIntentCard(
                 onClick = onOpen,
             )
         }
+    }
+}
+
+/**
+ * Emits an intent's status symbols into the enclosing [Row] (the present facets,
+ * then the resolved target permission and exported globe). Nothing is emitted for
+ * facets/security that don't apply, so an enclosing empty row stays zero-height.
+ */
+@Composable
+fun RowScope.IntentSymbols(spec: IntentSpec, security: TargetSecurity?) {
+    IntentFeature.entries.filter { it.present(spec) }.forEach {
+        val v = intentFeatureVisual(it)
+        SymbolIcon(v.icon, v.label, v.color)
+    }
+    val level = security?.permissionLevel ?: ProtectionLevel.NONE
+    if (level != ProtectionLevel.NONE) {
+        val v = protectionVisual(level)
+        SymbolIcon(v.icon, "Target permission: ${v.label}", v.color)
+    }
+    if (security?.exported == true) {
+        SymbolIcon(Icons.Filled.Public, "Target exported", ExportedTint)
     }
 }
 

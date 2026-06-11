@@ -42,6 +42,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -56,6 +57,7 @@ import androidx.navigation.NavController
 import at.matscheko.intentions.core.AmCommand
 import at.matscheko.intentions.core.IntentActions
 import at.matscheko.intentions.core.ManifestScanner.ScanKind
+import at.matscheko.intentions.core.TargetSecurity
 import at.matscheko.intentions.core.ShellRunner
 import at.matscheko.intentions.core.toast
 import at.matscheko.intentions.ui.AppViewModel
@@ -86,6 +88,10 @@ fun MainScreen(
     var bindDialogIntent by remember { mutableStateOf<Intent?>(null) }
     // Which component kinds the current intent resolves to (for the hint + highlight).
     val resolved = remember(vm.spec) { resolveTargets(context, vm.spec.toIntent()) }
+    // Exported/permission of the target component, for the symbol row (resolved off-thread).
+    val intentSecurity by produceState<TargetSecurity?>(null, vm.spec.packageName, vm.spec.className) {
+        value = vm.targetSecurity(vm.spec.packageName, vm.spec.className)
+    }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -183,12 +189,18 @@ fun MainScreen(
             // --- Intent ---
             SectionLabel("Intent")
             Column(modifier = Modifier.padding(start = INDENT)) {
-                Text(
-                    "(click to edit)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp),
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                ) {
+                    Text(
+                        "(click to edit)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IntentSymbols(spec = vm.spec, security = intentSecurity)
+                }
                 IntentCard(
                     spec = vm.spec,
                     vm = vm,
