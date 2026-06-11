@@ -25,7 +25,9 @@ data class Bookmark(
 
 @Dao
 interface BookmarkDao {
-    @Query("SELECT * FROM bookmarks ORDER BY name COLLATE NOCASE")
+    // Newest first (by insertion id) so the list reads like the recents history;
+    // the editable title is just a label, not the sort key.
+    @Query("SELECT * FROM bookmarks ORDER BY id DESC")
     fun observeAll(): Flow<List<Bookmark>>
 
     @Insert

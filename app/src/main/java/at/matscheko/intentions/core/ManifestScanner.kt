@@ -14,6 +14,9 @@ import android.content.res.XmlResourceParser
 import android.graphics.drawable.Drawable
 import org.xmlpull.v1.XmlPullParser
 
+/** Whether a resolved component is reachable from other apps, and its guard's level. */
+data class TargetSecurity(val exported: Boolean, val permissionLevel: ProtectionLevel)
+
 /**
  * Enumerates installed packages and scrapes their compiled manifests for
  * components, actions, categories and data filters. This consolidates the old
@@ -119,6 +122,30 @@ class ManifestScanner(context: Context) {
             }
             .distinctBy { it.authority }
             .sortedBy { it.authority }
+    }
+
+    /**
+     * Exported flag + guarding-permission level of a single explicit component,
+     * resolved across the four component kinds (the intent doesn't say which it
+     * targets). Returns null for an implicit intent or an unresolvable component.
+     */
+    fun componentSecurity(packageName: String, className: String): TargetSecurity? {
+        if (packageName.isBlank() || className.isBlank()) return null
+        val cn = ComponentName(packageName, className)
+        val flags = PackageManager.MATCH_DISABLED_COMPONENTS
+        val info: ComponentInfo =
+            runCatching { pm.getActivityInfo(cn, flags) }.getOrNull()
+                ?: runCatching { pm.getServiceInfo(cn, flags) }.getOrNull()
+                ?: runCatching { pm.getReceiverInfo(cn, flags) }.getOrNull()
+                ?: runCatching { pm.getProviderInfo(cn, flags) }.getOrNull()
+                ?: return null
+        val permission = when (info) {
+            is ProviderInfo -> info.readPermission
+            is ServiceInfo -> info.permission
+            is ActivityInfo -> info.permission // also covers receivers
+            else -> null
+        }
+        return TargetSecurity(info.exported, Permissions.levelOf(pm, permission))
     }
 
     /** The platform's generic app icon — used so a card always shows *something*. */

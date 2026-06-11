@@ -16,10 +16,12 @@ import at.matscheko.intentions.core.IntentCodec
 import at.matscheko.intentions.core.ManifestScanner
 import at.matscheko.intentions.core.ProtectionLevel
 import at.matscheko.intentions.core.ResourceBrowser
+import at.matscheko.intentions.core.TargetSecurity
 import at.matscheko.intentions.data.Bookmark
 import at.matscheko.intentions.data.BookmarkDatabase
 import at.matscheko.intentions.data.RecentIntent
 import at.matscheko.intentions.data.RecentsDatabase
+import at.matscheko.intentions.model.IntentFilters
 import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.model.ProviderOp
 import kotlinx.coroutines.Dispatchers
@@ -132,6 +134,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var resourceImageTypes by mutableStateOf<Map<String, FilterState>>(emptyMap())
     var resourceTextTypes by mutableStateOf<Map<String, FilterState>>(emptyMap())
 
+    // Bookmark / recent list filters (query + facet/security chips).
+    var bookmarkFilters by mutableStateOf(IntentFilters())
+    var recentFilters by mutableStateOf(IntentFilters())
+
     private var dataQueries by mutableStateOf<Map<ManifestScanner.ScanKind, String>>(emptyMap())
     fun dataQuery(kind: ManifestScanner.ScanKind): String = dataQueries[kind].orEmpty()
     fun setDataQuery(kind: ManifestScanner.ScanKind, value: String) {
@@ -203,6 +209,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Drop the cached components for [pkg] so the next read re-scans. */
     fun invalidateComponents(pkg: String) {
         componentsCache.remove(pkg)
+    }
+
+    private val securityCache = HashMap<String, TargetSecurity?>()
+    private val securityLock = Mutex()
+
+    /** Resolve (and cache) the exported/permission status of an intent's target component. */
+    suspend fun targetSecurity(packageName: String, className: String): TargetSecurity? {
+        if (packageName.isBlank() || className.isBlank()) return null
+        val key = "$packageName/$className"
+        securityLock.withLock { if (securityCache.containsKey(key)) return securityCache[key] }
+        val result = withContext(Dispatchers.IO) { scanner.componentSecurity(packageName, className) }
+        securityLock.withLock { securityCache[key] = result }
+        return result
     }
 
     suspend fun collect(kind: ManifestScanner.ScanKind) =
