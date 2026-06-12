@@ -30,6 +30,7 @@ import at.matscheko.intentions.model.IntentFilters
 import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.components.CopyIntentButton
+import at.matscheko.intentions.ui.components.FilterGroupDivider
 import at.matscheko.intentions.ui.components.IntentCard
 import at.matscheko.intentions.ui.components.SymbolIcon
 import at.matscheko.intentions.ui.components.TriStateFilterChip
@@ -136,6 +137,7 @@ fun RowScope.IntentFilterChips(filters: IntentFilters, onChange: (IntentFilters)
             iconTint = v.color,
         )
     }
+    FilterGroupDivider()
     TriStateFilterChip(
         state = filters.exported,
         onClick = { onChange(filters.copy(exported = filters.exported.next())) },
@@ -143,6 +145,7 @@ fun RowScope.IntentFilterChips(filters: IntentFilters, onChange: (IntentFilters)
         icon = Icons.Filled.Public,
         iconTint = ExportedTint,
     )
+    FilterGroupDivider()
     // NONE shows no symbol, so it isn't offered as a (misleading) chip.
     ProtectionLevel.entries.filter { it != ProtectionLevel.NONE }.forEach { level ->
         val state = filters.levels[level] ?: FilterState.IGNORE

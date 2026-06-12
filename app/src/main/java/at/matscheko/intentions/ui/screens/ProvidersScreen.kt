@@ -2,9 +2,7 @@ package at.matscheko.intentions.ui.screens
 
 import android.net.Uri
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -18,6 +16,7 @@ import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
 import at.matscheko.intentions.ui.components.EntityListScaffold
 import at.matscheko.intentions.ui.components.EntityRow
+import at.matscheko.intentions.ui.components.FilterGroupDivider
 import at.matscheko.intentions.ui.components.SymbolIcon
 import at.matscheko.intentions.ui.components.TriStateFilterChip
 import at.matscheko.intentions.ui.components.rememberAppIcon
@@ -73,6 +72,7 @@ fun ProvidersScreen(vm: AppViewModel, nav: NavController) {
                 iconTint = ExportedTint,
                 label = "Exported",
             )
+            FilterGroupDivider()
             ProtectionLevel.entries.forEach { level ->
                 val visual = protectionVisual(level)
                 val state = levels[level] ?: FilterState.IGNORE
@@ -107,12 +107,13 @@ fun ProvidersScreen(vm: AppViewModel, nav: NavController) {
                 }
             },
             trailing = {
-                SymbolIcon(visual.icon, "Read permission: ${visual.label}", visual.color)
+                // Exported globe first (only when exported), then the always-present
+                // read-permission level. Keeping the level last anchors it at the far
+                // right so it doesn't shift columns when the globe is absent.
                 if (provider.exported) {
                     SymbolIcon(Icons.Filled.Public, "Exported", ExportedTint)
-                } else {
-                    SymbolIcon(Icons.Filled.Lock, "Not exported", MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                SymbolIcon(visual.icon, "Read permission: ${visual.label}", visual.color)
             },
         )
     }

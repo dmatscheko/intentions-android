@@ -40,6 +40,7 @@ import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
 import at.matscheko.intentions.ui.components.EntityListScaffold
 import at.matscheko.intentions.ui.components.EntityRow
+import at.matscheko.intentions.ui.components.FilterGroupDivider
 import at.matscheko.intentions.ui.components.ListOverflowMenu
 import at.matscheko.intentions.ui.components.SymbolIcon
 import at.matscheko.intentions.ui.components.TriStateFilterChip
@@ -178,6 +179,7 @@ fun PackageDetailScreen(vm: AppViewModel, nav: NavController, packageName: Strin
                 iconTint = ExportedTint,
                 label = "Exported",
             )
+            FilterGroupDivider()
             ProtectionLevel.entries.filter { it != ProtectionLevel.NONE }.forEach { level ->
                 val visual = protectionVisual(level)
                 val state = levels[level] ?: FilterState.IGNORE
@@ -228,14 +230,17 @@ fun PackageDetailScreen(vm: AppViewModel, nav: NavController, packageName: Strin
                                 Text("Query")
                             }
                         }
+                        // Exported globe first, then the protection level last — the same
+                        // ordering as the content-providers list, so the permission symbol
+                        // stays at the far right.
+                        if (item.exported) {
+                            SymbolIcon(Icons.Filled.Public, "Accessible from other apps", ExportedTint)
+                        }
                         // Protection level of the permission needed to use this component
                         // (omitted when none is required, to avoid an icon on every row).
                         if (item.permissionLevel != ProtectionLevel.NONE) {
                             val visual = protectionVisual(item.permissionLevel)
                             SymbolIcon(visual.icon, "Requires permission: ${visual.label}", visual.color)
-                        }
-                        if (item.exported) {
-                            SymbolIcon(Icons.Filled.Public, "Accessible from other apps", ExportedTint)
                         }
                     },
                 )

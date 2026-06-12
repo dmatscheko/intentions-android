@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -18,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Block
@@ -81,6 +83,8 @@ fun <T> EntityListScaffold(
     listState: LazyListState,
     emptyText: String = "Nothing found.",
     topBarActions: @Composable RowScope.() -> Unit = {},
+    /** Whether [filters] emits any chips; gates the divider after the search chip. */
+    hasFilters: Boolean = true,
     filters: @Composable RowScope.() -> Unit = {},
     itemContent: @Composable (T) -> Unit,
 ) {
@@ -103,6 +107,7 @@ fun <T> EntityListScaffold(
                 onSearchChange = onSearchChange,
                 baseLabel = searchLabel,
                 count = count,
+                hasFilters = hasFilters,
                 filters = filters,
             )
             when {
@@ -184,6 +189,21 @@ fun FilterChipRow(modifier: Modifier = Modifier, content: @Composable RowScope.(
 }
 
 /**
+ * A small centered dot that separates groups of filter chips within a [FilterChipRow]
+ * — e.g. the search chip from the filters, or the "exported" chip from the
+ * protection-level chips. The row's own spacing supplies the gap on either side.
+ */
+@Composable
+fun RowScope.FilterGroupDivider() {
+    Box(
+        Modifier
+            .align(Alignment.CenterVertically)
+            .size(4.dp)
+            .background(MaterialTheme.colorScheme.outline, CircleShape),
+    )
+}
+
+/**
  * Search field that, while empty and unfocused, collapses into a leading "🔍 N"
  * chip ahead of the [filters] to save the row of vertical space the full field
  * takes. Tapping the chip expands and focuses the field; blurring it while empty
@@ -197,6 +217,7 @@ fun SearchChipBar(
     onSearchChange: (String) -> Unit,
     baseLabel: String,
     count: Int?,
+    hasFilters: Boolean = true,
     filters: @Composable RowScope.() -> Unit,
 ) {
     var expanded by remember { mutableStateOf(searchValue.isNotEmpty()) }
@@ -238,6 +259,9 @@ fun SearchChipBar(
                     Icon(Icons.Filled.Search, contentDescription = "Search", modifier = Modifier.size(18.dp))
                 },
             )
+            // The search chip is its own group; separate it from the filters. (When
+            // the field is expanded it sits on its own row, so no divider is needed.)
+            if (hasFilters) FilterGroupDivider()
             filters()
         }
     }

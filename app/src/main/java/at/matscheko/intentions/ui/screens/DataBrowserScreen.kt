@@ -100,6 +100,7 @@ fun DataBrowserScreen(vm: AppViewModel, nav: NavController, kind: ScanKind) {
         itemKey = { _, item -> item.value },
         listState = listState,
         emptyText = "Nothing found.",
+        hasFilters = false,
         topBarActions = {
             ListOverflowMenu(
                 onRefresh = { refreshKey.intValue++ },

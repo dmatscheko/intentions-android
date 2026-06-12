@@ -9,10 +9,13 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -21,7 +24,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.AlertDialog
@@ -51,7 +53,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -179,12 +186,19 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
                     val visual = protectionVisual(p.readPermissionLevel)
                     Icon(visual.icon, contentDescription = "Read permission: ${visual.label}", tint = visual.color, modifier = Modifier.size(18.dp))
                     Text(visual.label, style = MaterialTheme.typography.bodySmall)
-                    Icon(
-                        if (p.exported) Icons.Filled.Public else Icons.Filled.Lock,
-                        contentDescription = if (p.exported) "Exported" else "Not exported",
-                        tint = if (p.exported) ExportedTint else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
+                    if (p.exported) {
+                        Icon(
+                            Icons.Filled.Public,
+                            contentDescription = "Exported",
+                            tint = ExportedTint,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    } else {
+                        // Not a list row (so absence can't signal "not exported" the way it
+                        // does in the explorers) and the lock is already taken by the read
+                        // permission level — so show the exported globe struck through in red.
+                        NotExportedGlobe(modifier = Modifier.size(18.dp))
+                    }
                     Text(
                         p.packageName,
                         style = MaterialTheme.typography.bodySmall,
@@ -312,6 +326,40 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
                 TextButton(onClick = { confirmPending = false }) { Text("Cancel") }
             },
         )
+    }
+}
+
+/**
+ * The exported globe ([Icons.Filled.Public], [ExportedTint]) with a red diagonal
+ * strike, signalling a provider that is *not* exported. Used where a bare absence
+ * of the globe would be ambiguous (single status row rather than a list).
+ */
+@Composable
+private fun NotExportedGlobe(
+    modifier: Modifier = Modifier,
+    // The surface the symbol sits on — used to set the red stroke slightly apart
+    // from the globe without an opaque white halo that would stand out on dark themes.
+    haloColor: Color = MaterialTheme.colorScheme.background,
+) {
+    Box(
+        modifier = modifier.semantics { contentDescription = "Not exported" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.Public,
+            contentDescription = null,
+            tint = ExportedTint,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            // Diagonal strike from bottom-left to top-right, with a thin halo in the
+            // background color underneath so the red stays separated from the globe.
+            val start = Offset(size.width * 0.18f, size.height * 0.82f)
+            val end = Offset(size.width * 0.82f, size.height * 0.18f)
+            val width = size.minDimension * 0.11f
+            drawLine(haloColor, start, end, strokeWidth = width * 2f, cap = StrokeCap.Round)
+            drawLine(Color(0xFFD32F2F), start, end, strokeWidth = width, cap = StrokeCap.Round)
+        }
     }
 }
 
