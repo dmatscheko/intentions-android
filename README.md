@@ -21,9 +21,14 @@ The app is largely a reconstruction of the Intentions app from 2012, whose code 
 
 ### Screenshots
 
-| Main screen | Package explorer | App components | Intent editor | Content provider | Resource browser |
-| --- | --- | --- | --- | --- | --- |
-| <a href="docs/screenshots/main.jpg"><img src="docs/screenshots/main.jpg" alt="Main screen, intent preview and launcher screenshot" width="120"></a> | <a href="docs/screenshots/package_explorer.jpg"><img src="docs/screenshots/package_explorer.jpg" alt="Package explorer apps list screenshot" width="120"></a> | <a href="docs/screenshots/package_explorer_components.jpg"><img src="docs/screenshots/package_explorer_components.jpg" alt="Package explorer app components list screenshot" width="120"></a> | <a href="docs/screenshots/intent_editor.jpg"><img src="docs/screenshots/intent_editor.jpg" alt="Intent editor screenshot" width="120"></a> | <a href="docs/screenshots/content_provider_query.jpg"><img src="docs/screenshots/content_provider_query.jpg" alt="Content provider query screenshot" width="120"></a> | <a href="docs/screenshots/resource_browser_images.jpg"><img src="docs/screenshots/resource_browser_images.jpg" alt="Resource browser screenshot" width="120"></a> |
+<p align="center">
+  <a href="docs/screenshots/raw/main.jpg"><img src="docs/screenshots/main.jpg" alt="Main screen — intent preview and launcher screenshot" width="32%"></a>
+  <a href="docs/screenshots/raw/package_explorer.jpg"><img src="docs/screenshots/package_explorer.jpg" alt="Package explorer — installed apps list screenshot" width="32%"></a>
+  <a href="docs/screenshots/raw/package_explorer_components.jpg"><img src="docs/screenshots/package_explorer_components.jpg" alt="App components — exported and permissions screenshot" width="32%"></a>
+  <a href="docs/screenshots/raw/intent_editor.jpg"><img src="docs/screenshots/intent_editor.jpg" alt="Intent editor — typed extras and flags screenshot" width="32%"></a>
+  <a href="docs/screenshots/raw/content_provider_query.jpg"><img src="docs/screenshots/content_provider_query.jpg" alt="Content provider — query a content URI screenshot" width="32%"></a>
+  <a href="docs/screenshots/raw/resource_browser_images.jpg"><img src="docs/screenshots/resource_browser_images.jpg" alt="Resource browser — images and XML screenshot" width="32%"></a>
+</p>
 
 ### Build an intent
 - **Intent editor** — set the component, action, data URI + MIME type, categories, extras
@@ -93,7 +98,12 @@ services is no longer allowed (Android 8+), so the app opens the system App-Info
 page instead.
 
 ## Install
-A debug build can be installed with:
+Grab the latest **`intentions-release.apk`** from the
+[Releases page](https://github.com/dmatscheko/intentions-android/releases/latest)
+and install it on your device — no build required. You may need to allow
+installing from unknown sources.
+
+Prefer to build it yourself? A debug build can be installed with:
 
 ```sh
 ./gradlew :app:installDebug

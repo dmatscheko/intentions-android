@@ -71,6 +71,12 @@ android {
     }
 }
 
+// Name APK outputs after the app rather than the Gradle module, so release
+// downloads read "intentions-release.apk" instead of "app-release.apk".
+base {
+    archivesName.set("intentions")
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
