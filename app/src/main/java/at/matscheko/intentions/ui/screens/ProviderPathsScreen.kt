@@ -1,16 +1,13 @@
 package at.matscheko.intentions.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +23,7 @@ import androidx.navigation.NavController
 import at.matscheko.intentions.core.ProviderPaths
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.Routes
+import at.matscheko.intentions.ui.components.EntityRow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,26 +62,19 @@ fun ProviderPathsScreen(vm: AppViewModel, nav: NavController, authority: String)
             )
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 item(key = "__root") {
-                    PathRow("content://$authority/  (authority root)") { choose("") }
-                    HorizontalDivider()
+                    EntityRow(
+                        title = "content://$authority/",
+                        subtitles = listOf("authority root"),
+                        onClick = { choose("") },
+                    )
                 }
                 items(paths, key = { it }) { path ->
-                    PathRow("content://$authority/$path") { choose(path) }
-                    HorizontalDivider()
+                    EntityRow(
+                        title = "content://$authority/$path",
+                        onClick = { choose(path) },
+                    )
                 }
             }
         }
     }
-}
-
-@Composable
-private fun PathRow(label: String, onClick: () -> Unit) {
-    Text(
-        label,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        style = MaterialTheme.typography.bodyLarge,
-    )
 }

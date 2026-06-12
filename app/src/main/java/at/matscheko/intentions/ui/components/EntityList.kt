@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,10 +24,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -86,6 +90,8 @@ fun <T> EntityListScaffold(
     /** Whether [filters] emits any chips; gates the divider after the search chip. */
     hasFilters: Boolean = true,
     filters: @Composable RowScope.() -> Unit = {},
+    /** Optional footer, e.g. an [AddItemBar] for the editor screens. */
+    bottomBar: @Composable () -> Unit = {},
     itemContent: @Composable (T) -> Unit,
 ) {
     Scaffold(
@@ -100,6 +106,7 @@ fun <T> EntityListScaffold(
                 actions = topBarActions,
             )
         },
+        bottomBar = bottomBar,
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             SearchChipBar(
@@ -128,7 +135,8 @@ fun <T> EntityListScaffold(
 @Composable
 fun EntityRow(
     title: String,
-    onClick: () -> Unit,
+    /** When null the row isn't clickable (no ripple) — for non-navigable editor rows. */
+    onClick: (() -> Unit)? = null,
     subtitles: List<String> = emptyList(),
     selected: Boolean = false,
     leadingIcon: ImageBitmap? = null,
@@ -142,7 +150,7 @@ fun EntityRow(
                 if (selected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
                 else Modifier
             )
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -201,6 +209,36 @@ fun RowScope.FilterGroupDivider() {
             .size(4.dp)
             .background(MaterialTheme.colorScheme.outline, CircleShape),
     )
+}
+
+/**
+ * Bottom footer for the editor list screens: a caller-supplied [field] plus an Add
+ * button, divided from the list above. Lives at the bottom — not the top — so it's
+ * never confused with the (top) expanded search field, and rises above the keyboard.
+ * [field] runs in a [RowScope], so it can take `Modifier.weight(1f)`.
+ */
+@Composable
+fun AddItemBar(
+    onAdd: () -> Unit,
+    addEnabled: Boolean,
+    field: @Composable RowScope.() -> Unit,
+) {
+    // Sit above the system navigation bar, and above the keyboard when it's open.
+    // Chaining consumes the nav-bar inset first so the two don't double-count.
+    Column(Modifier.navigationBarsPadding().imePadding()) {
+        HorizontalDivider()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            field()
+            IconButton(onClick = onAdd, enabled = addEnabled) {
+                Icon(Icons.Filled.Add, contentDescription = "Add")
+            }
+        }
+    }
 }
 
 /**
