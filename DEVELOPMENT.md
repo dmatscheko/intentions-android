@@ -18,8 +18,8 @@ JDK 17–21 (the Android Studio JBR works well):
 
 ```sh
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-./gradlew :app:assembleDebug      # build
-./gradlew :app:installDebug       # build + install on a connected device/emulator
+./gradlew assembleDebug      # build
+./gradlew installDebug       # build + install on a connected device/emulator
 ```
 
 If multiple devices are attached, target one with `ANDROID_SERIAL=<serial>` (e.g.
@@ -101,7 +101,7 @@ at.matscheko.intentions
 Run the unit suite with:
 
 ```sh
-./gradlew :app:testDebugUnitTest --rerun-tasks
+./gradlew testDebugUnitTest --rerun-tasks
 ```
 
 - **Pure JVM** tests cover the framework-free logic: `AmCommandTest` (the `adb am` generator)

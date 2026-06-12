@@ -83,6 +83,7 @@ fun MainScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var menuOpen by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
     var shellRunning by remember { mutableStateOf(false) }
     // Non-null while the bound-service dialog is open.
     var bindDialogIntent by remember { mutableStateOf<Intent?>(null) }
@@ -141,7 +142,7 @@ fun MainScreen(
                         })
                         DropdownMenuItem(text = { Text("About") }, onClick = {
                             menuOpen = false
-                            nav.navigate(Routes.ABOUT)
+                            showAbout = true
                         })
                     }
                 },
@@ -335,6 +336,10 @@ fun MainScreen(
 
     bindDialogIntent?.let { intent ->
         BoundServiceDialog(intent = intent, onDismiss = { bindDialogIntent = null })
+    }
+
+    if (showAbout) {
+        AboutDialog(onDismiss = { showAbout = false })
     }
 }
 

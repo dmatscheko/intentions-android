@@ -11,7 +11,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import at.matscheko.intentions.core.ManifestScanner
-import at.matscheko.intentions.ui.screens.AboutScreen
 import at.matscheko.intentions.ui.screens.BookmarksScreen
 import at.matscheko.intentions.ui.screens.CategoriesScreen
 import at.matscheko.intentions.ui.screens.ContentQueryScreen
@@ -46,7 +45,6 @@ object Routes {
     const val PROVIDER_PATHS = "provider_paths/{authority}"
     const val SNIFFER = "sniffer"
     const val SNIFFER_ACTIONS = "sniffer_actions"
-    const val ABOUT = "about"
 
     fun packageDetail(pkg: String) = "package/${Uri.encode(pkg)}"
     fun providerPaths(authority: String) = "provider_paths/${Uri.encode(authority)}"
@@ -133,6 +131,5 @@ fun IntentionsApp(
         }
         composable(Routes.SNIFFER) { SnifferScreen(vm, navController) }
         composable(Routes.SNIFFER_ACTIONS) { SnifferActionsScreen(navController) }
-        composable(Routes.ABOUT) { AboutScreen(navController) }
     }
 }
