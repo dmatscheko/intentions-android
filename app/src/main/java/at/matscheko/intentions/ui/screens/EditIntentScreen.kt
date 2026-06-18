@@ -54,6 +54,9 @@ import at.matscheko.intentions.core.IntentFlags
 import at.matscheko.intentions.core.IntentSuggestions
 import at.matscheko.intentions.core.ResourceBrowser
 import at.matscheko.intentions.core.UriKind
+import at.matscheko.intentions.core.crashedTheProvider
+import at.matscheko.intentions.core.providerCrashWarning
+import at.matscheko.intentions.core.providerOwner
 import at.matscheko.intentions.core.uriHint
 import at.matscheko.intentions.core.withUnstableProvider
 import at.matscheko.intentions.model.ExtraType
@@ -65,6 +68,15 @@ import at.matscheko.intentions.ui.Routes
 import at.matscheko.intentions.ui.components.AutoCompleteField
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+/** Outcome of probing a content:// URI's MIME type for the editor's inline hint. */
+private sealed interface TypeProbe {
+    /** The provider reported a type (the resolver returned non-null). */
+    data class Resolved(val mimeType: String) : TypeProbe
+
+    /** The probe killed the provider's process; [message] names the app we crashed. */
+    data class Crashed(val message: String) : TypeProbe
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -186,23 +198,38 @@ fun EditIntentScreen(vm: AppViewModel, nav: NavController, path: List<Int> = emp
                 // ContentResolver reports (README TODO: "show content type…").
                 if (spec.mimeType.isBlank() && spec.dataUri.startsWith("content://")) {
                     val context = LocalContext.current
-                    val resolved by produceState<String?>(null, spec.dataUri) {
+                    val probe by produceState<TypeProbe?>(null, spec.dataUri) {
                         value = withContext(Dispatchers.IO) {
                             // Go through an unstable provider client: a buggy foreign
                             // provider whose getType() crashes its own process must not
                             // take this app down with it (see withUnstableProvider).
+                            val uri = android.net.Uri.parse(spec.dataUri)
                             runCatching {
-                                val uri = android.net.Uri.parse(spec.dataUri)
                                 context.withUnstableProvider(uri) { it.getType(uri) }
-                            }.getOrNull()
+                            }.fold(
+                                onSuccess = { type -> type?.let { TypeProbe.Resolved(it) } },
+                                onFailure = { e ->
+                                    // The provider's process died while serving us — we
+                                    // very likely just crashed it. Warn and name the app.
+                                    if (crashedTheProvider(e)) {
+                                        TypeProbe.Crashed(providerCrashWarning(context.providerOwner(uri)))
+                                    } else null
+                                },
+                            )
                         }
                     }
-                    resolved?.let {
-                        Text(
-                            "Resolved content type: $it",
+                    when (val p = probe) {
+                        is TypeProbe.Resolved -> Text(
+                            "Resolved content type: ${p.mimeType}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        is TypeProbe.Crashed -> Text(
+                            p.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        null -> {}
                     }
                 }
                 DataUriHint(spec.dataUri, vm, nav) { mime ->

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.DeadObjectException
 import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -67,6 +68,9 @@ import at.matscheko.intentions.core.Permissions
 import at.matscheko.intentions.core.ProtectionLevel
 import at.matscheko.intentions.core.ShellRunner
 import at.matscheko.intentions.core.conciseMessage
+import at.matscheko.intentions.core.crashLogCommandFor
+import at.matscheko.intentions.core.providerCrashMessage
+import at.matscheko.intentions.core.providerOwner
 import at.matscheko.intentions.core.withUnstableProvider
 import at.matscheko.intentions.model.ProviderOp
 import at.matscheko.intentions.ui.AppViewModel
@@ -111,6 +115,9 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
     var loading by remember { mutableStateOf(false) }
     // The on-device shell command to retry a denied/failed operation with (or null).
     var shellRetryCommand by remember { mutableStateOf<String?>(null) }
+    // A shell command to fetch the crashed app's stack trace, when a call killed its
+    // process (or null). Reading another app's log needs root — best-effort.
+    var crashLogCommand by remember { mutableStateOf<String?>(null) }
     var confirmPending by remember { mutableStateOf(false) }
 
     fun execute() {
@@ -120,6 +127,7 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
             val r = withContext(Dispatchers.IO) { runOp(context, request) }
             result = r.text
             shellRetryCommand = if (r.offerRetry) shellCommandFor(request) else null
+            crashLogCommand = r.crashedPackage?.let { crashLogCommandFor(it) }
             loading = false
         }
     }
@@ -287,6 +295,15 @@ fun ContentQueryScreen(vm: AppViewModel, nav: NavController) {
                 ShellRetryButton(enabled = !loading) { root -> retryViaShell(command, root) }
             }
 
+            // Offered after we crashed the provider's app: pull its stack trace from
+            // the system crash log (needs root to read another app's log).
+            crashLogCommand?.let { command ->
+                ShellRetryButton(
+                    enabled = !loading,
+                    label = "Show its crash log (shell)",
+                ) { root -> retryViaShell(command, root) }
+            }
+
             if (result.isNotEmpty()) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     SelectionContainer {
@@ -374,8 +391,16 @@ private data class OpRequest(
     val where: String = "",
 )
 
-/** The outcome: text to show, and whether to offer a shell retry. */
-private data class OpResult(val text: String, val offerRetry: Boolean = false)
+/**
+ * The outcome: text to show, whether to offer a shell retry, and — when the call
+ * killed the provider's process — the package we crashed, so the screen can offer
+ * to fetch that app's crash log.
+ */
+private data class OpResult(
+    val text: String,
+    val offerRetry: Boolean = false,
+    val crashedPackage: String? = null,
+)
 
 private fun runOp(context: Context, req: OpRequest): OpResult = try {
     val u = Uri.parse(req.uriString)
@@ -464,6 +489,11 @@ private fun runOp(context: Context, req: OpRequest): OpResult = try {
         }
     }
     } ?: OpResult("No content provider is registered for this authority.", offerRetry = true)
+} catch (e: DeadObjectException) {
+    // The provider's process died while serving this call — we just crashed it.
+    // (The unstable client surfaces this instead of the platform killing us too.)
+    val owner = context.providerOwner(runCatching { Uri.parse(req.uriString) }.getOrNull() ?: Uri.EMPTY)
+    OpResult(providerCrashMessage(owner), crashedPackage = owner?.packageName)
 } catch (e: SecurityException) {
     // Locked to the system / SAF, or a permission a normal app can't hold. A shell
     // (root) may bypass it, so offer that retry.
