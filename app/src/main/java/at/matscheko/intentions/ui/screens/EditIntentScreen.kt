@@ -55,6 +55,7 @@ import at.matscheko.intentions.core.IntentSuggestions
 import at.matscheko.intentions.core.ResourceBrowser
 import at.matscheko.intentions.core.UriKind
 import at.matscheko.intentions.core.uriHint
+import at.matscheko.intentions.core.withUnstableProvider
 import at.matscheko.intentions.model.ExtraType
 import at.matscheko.intentions.model.IntentSpec
 import at.matscheko.intentions.core.Shortcuts
@@ -187,8 +188,12 @@ fun EditIntentScreen(vm: AppViewModel, nav: NavController, path: List<Int> = emp
                     val context = LocalContext.current
                     val resolved by produceState<String?>(null, spec.dataUri) {
                         value = withContext(Dispatchers.IO) {
+                            // Go through an unstable provider client: a buggy foreign
+                            // provider whose getType() crashes its own process must not
+                            // take this app down with it (see withUnstableProvider).
                             runCatching {
-                                context.contentResolver.getType(android.net.Uri.parse(spec.dataUri))
+                                val uri = android.net.Uri.parse(spec.dataUri)
+                                context.withUnstableProvider(uri) { it.getType(uri) }
                             }.getOrNull()
                         }
                     }

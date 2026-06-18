@@ -67,6 +67,7 @@ import at.matscheko.intentions.core.Permissions
 import at.matscheko.intentions.core.ProtectionLevel
 import at.matscheko.intentions.core.ShellRunner
 import at.matscheko.intentions.core.conciseMessage
+import at.matscheko.intentions.core.withUnstableProvider
 import at.matscheko.intentions.model.ProviderOp
 import at.matscheko.intentions.ui.AppViewModel
 import at.matscheko.intentions.ui.components.ShellRetryButton
@@ -378,7 +379,10 @@ private data class OpResult(val text: String, val offerRetry: Boolean = false)
 
 private fun runOp(context: Context, req: OpRequest): OpResult = try {
     val u = Uri.parse(req.uriString)
-    val cr = context.contentResolver
+    // Go through an *unstable* provider client so a buggy foreign provider that
+    // crashes its own process while serving us can't take this app down too
+    // (see withUnstableProvider). Returns null when the authority has no provider.
+    context.withUnstableProvider(u) { cr ->
     when (req.op) {
         ProviderOp.QUERY -> {
             val cursor = cr.query(u, null, null, null, null)
@@ -412,9 +416,9 @@ private fun runOp(context: Context, req: OpRequest): OpResult = try {
             OpResult("MIME type: ${type ?: "(null)"}", offerRetry = type == null)
         }
         ProviderOp.READ -> {
-            val stream = cr.openInputStream(u)
+            val stream = cr.openAssetFile(u, "r", null)?.createInputStream()
             if (stream == null) {
-                OpResult("openInputStream() returned null.", offerRetry = true)
+                OpResult("openAssetFile() returned null.", offerRetry = true)
             } else stream.use { s ->
                 val bytes = readCapped(s, 256 * 1024)
                 val type = cr.getType(u)
@@ -429,7 +433,7 @@ private fun runOp(context: Context, req: OpRequest): OpResult = try {
             if (req.method.isBlank()) {
                 OpResult("Enter a method name to call().")
             } else {
-                val bundle = cr.call(u, req.method, req.arg.ifBlank { null }, null)
+                val bundle = cr.call(req.method, req.arg.ifBlank { null }, null)
                 if (bundle == null) {
                     OpResult("call() returned null.", offerRetry = true)
                 } else {
@@ -459,6 +463,7 @@ private fun runOp(context: Context, req: OpRequest): OpResult = try {
             OpResult("Deleted $n row(s).")
         }
     }
+    } ?: OpResult("No content provider is registered for this authority.", offerRetry = true)
 } catch (e: SecurityException) {
     // Locked to the system / SAF, or a permission a normal app can't hold. A shell
     // (root) may bypass it, so offer that retry.
