@@ -22,18 +22,18 @@ The app is largely a reconstruction of the Intentions app from 2012, whose code 
 ### Screenshots
 
 <p align="center">
-  <a href="docs/screenshots/raw/main.jpg"><img src="docs/screenshots/main.jpg" alt="Main screen — intent preview and launcher screenshot" width="30%"></a>
+  <a href="docs/screenshots/raw/main.jpg"><img src="docs/screenshots/main.jpg" alt="Main screen — intent preview and launcher screenshot" width="29%"></a>
   &nbsp;&nbsp;&nbsp;
-  <a href="docs/screenshots/raw/package_explorer.jpg"><img src="docs/screenshots/package_explorer.jpg" alt="Package explorer — installed apps list screenshot" width="30%"></a>
+  <a href="docs/screenshots/raw/package_explorer.jpg"><img src="docs/screenshots/package_explorer.jpg" alt="Package explorer — installed apps list screenshot" width="29%"></a>
   &nbsp;&nbsp;&nbsp;
-  <a href="docs/screenshots/raw/package_explorer_components.jpg"><img src="docs/screenshots/package_explorer_components.jpg" alt="App components — exported and permissions screenshot" width="30%"></a>
+  <a href="docs/screenshots/raw/package_explorer_components.jpg"><img src="docs/screenshots/package_explorer_components.jpg" alt="App components — exported and permissions screenshot" width="29%"></a>
 </p>
 <p align="center">
-  <a href="docs/screenshots/raw/intent_editor.jpg"><img src="docs/screenshots/intent_editor.jpg" alt="Intent editor — typed extras and flags screenshot" width="30%"></a>
+  <a href="docs/screenshots/raw/intent_editor.jpg"><img src="docs/screenshots/intent_editor.jpg" alt="Intent editor — typed extras and flags screenshot" width="29%"></a>
   &nbsp;&nbsp;&nbsp;
-  <a href="docs/screenshots/raw/content_provider_query.jpg"><img src="docs/screenshots/content_provider_query.jpg" alt="Content provider — query a content URI screenshot" width="30%"></a>
+  <a href="docs/screenshots/raw/content_provider_query.jpg"><img src="docs/screenshots/content_provider_query.jpg" alt="Content provider — query a content URI screenshot" width="29%"></a>
   &nbsp;&nbsp;&nbsp;
-  <a href="docs/screenshots/raw/resource_browser_images.jpg"><img src="docs/screenshots/resource_browser_images.jpg" alt="Resource browser — images and XML screenshot" width="30%"></a>
+  <a href="docs/screenshots/raw/resource_browser_images.jpg"><img src="docs/screenshots/resource_browser_images.jpg" alt="Resource browser — images and XML screenshot" width="29%"></a>
 </p>
 
 ### Build an intent
